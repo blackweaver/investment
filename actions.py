@@ -25,18 +25,33 @@ load_dotenv()
 # Variables de entorno (tal como pediste)
 API_KEY_POLYGON = os.getenv("API_KEY_POLYGON")
 TICKETS = os.getenv("TICKETS")
+TICKETS_SYMBOLS = os.getenv("TICKETS_SYMBOLS")
 
-parser = argparse.ArgumentParser()
+# CLI args
+parser = argparse.ArgumentParser(conflict_handler="resolve")
+
+for symbol in TICKETS_SYMBOLS:
+    parser.add_argument(f"--{symbol.lower()}", type=float, default=None)
+    parser.add_argument(f"--{symbol.lower()}_platform", type=str, default="")
+    parser.add_argument(
+        f"--{symbol.lower()}_date",
+        type=lambda s: datetime.strptime(s, "%Y-%m-%d").date(),
+        default=None,
+        help="Fecha en formato YYYY-MM-DD (por defecto: hoy)"
+    )
+        
 parser.add_argument('--top10', action='store_true', help='Ejecutar lógica para Top 10')
 parser.add_argument('--bajas', action='store_true', help='Ejecutar lógica para Bajas')
 parser.add_argument('--telegram', action='store_true', help='Enviar un mensaje al bot de telegram con la tabla de totales del excel')
 parser.add_argument(
     "--date",
     type=lambda s: datetime.strptime(s, "%Y-%m-%d").strftime("%Y-%m-%d"),
-    default=date.today().strftime("%Y-%m-%d"),
+    default=None,
     help="Fecha en formato YYYY-MM-DD (por defecto: hoy)"
 )
 
+top10_telegram = ""
+bajas_telegram = ""
 
 args = parser.parse_args()
 top10 = args.top10
@@ -78,10 +93,10 @@ resp = chat("gpt-4o-mini", [{"role":"user","content":"Hola"}])
 
 # Totales
 # Crear hoja solo si no existe (se regenera cada vez)
-if "Totales" in book.sheetnames:
-    del book["Totales"]
+if "Acciones invertidas" in book.sheetnames:
+    del book["Acciones invertidas"]
 
-sheet = book.create_sheet("Totales")
+sheet = book.create_sheet("Acciones invertidas")
 
 # Top 10
 if top10:
@@ -134,8 +149,8 @@ if top10:
     top10 = get_top10_crypto()
 
     if top10:
-        print("✅ Top 10 obtenido: ", top10)
-        top10_telegram = "✅ Top 3 obtenido: " + ", ".join(top10[:3])
+        print("💰 Top 10 obtenido: ", top10)
+        top10_telegram = "💰 Top 3 obtenido: " + ", ".join(top10[:3])
         df_top10 = pd.DataFrame({"Top 10 empresas del momento": top10})
 
         for r in dataframe_to_rows(df_top10, index=False, header=True):
@@ -211,8 +226,8 @@ if bajas:
     top10_bajas = get_top10_bajas_acciones()
 
     if top10_bajas:
-        print("✅ Top 10 de bajas obtenido:", top10_bajas)
-        bajas_telegram = "✅ Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
+        print("💰 Top 10 de bajas obtenido:", top10_bajas)
+        bajas_telegram = "💰 Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
         df_top10_bajas = pd.DataFrame({"Top 10 acciones a bajo costo con potencial ": top10_bajas})
 
         for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
@@ -346,7 +361,7 @@ def fetch_price_on_date(ticker: str, date: str, api_key: str) -> dict:
     url = HIST_URL_TMPL.format(ticker=ticker, date=date)
     return _http_get_json(url, {"adjusted": "true", "apiKey": api_key})
 
-def fetch_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = None) -> dict:
+def fetch_quotes_polygon(symbols_csv: str, api_key: str, dateParam: Optional[str] = None) -> dict:
     """
     Si se pasa una fecha (YYYY-MM-DD), consulta /open-close para cada ticker.
     Si no, intenta una sola llamada al snapshot múltiple.
@@ -356,28 +371,29 @@ def fetch_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = N
     symbols: List[str] = [s.strip().upper() for s in symbols_csv.split(",") if s.strip()]
     if not symbols:
         raise ValueError("Debes pasar al menos un símbolo separado por coma.")
-
     # Caso histórico: se pidió una fecha
-    if date:
+    if dateParam:
         results: Dict[str, Any] = {}
         for t in symbols:
-            hist = _http_get_json(HIST_URL_TMPL.format(ticker=t, date=date),
+            hist = _http_get_json(HIST_URL_TMPL.format(ticker=t, date=dateParam),
                                   {"adjusted": "true", "apiKey": api_key})
             results[t] = hist
         return {"mode": "historical", "data": results}
-
-    # Caso normal: snapshot múltiple
-    try:
-        snap = _http_get_json(SNAPSHOT_URL, {"tickers": ",".join(symbols), "apiKey": api_key})
-        return {"mode": "snapshot", "data": snap}
-    except PolygonForbidden:
-        # Fallback: previous close por cada ticker
-        results: Dict[str, Any] = {}
-        for t in symbols:
-            prev = _http_get_json(PREV_URL_TMPL.format(ticker=t),
-                                  {"adjusted": "true", "apiKey": api_key})
-            results[t] = prev
-        return {"mode": "prev", "data": results}
+    
+    if dateParam is None:
+        # Caso normal: snapshot múltiple
+        try:
+            print("Intento con la fecha de hoy")
+            snap = _http_get_json(SNAPSHOT_URL, {"tickers": ",".join(symbols), "apiKey": api_key})
+            return {"mode": "snapshot", "data": snap}
+        except PolygonForbidden:
+            # Fallback: previous close por cada ticker
+            results: Dict[str, Any] = {}
+            for t in symbols:
+                prev = _http_get_json(PREV_URL_TMPL.format(ticker=t),
+                                    {"adjusted": "true", "apiKey": api_key})
+                results[t] = prev
+            return {"mode": "prev", "data": results}
     
 current_investment = {}
 def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = None) -> None:
@@ -388,10 +404,7 @@ def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = N
     - 'prev': usa el cierre del día anterior.
     """
     
-    if date:
-        resp = fetch_quotes_polygon(symbols_csv, api_key, date)
-    else:
-        resp = fetch_quotes_polygon(symbols_csv, api_key)
+    resp = fetch_quotes_polygon(symbols_csv, api_key, args.date)
     mode = resp.get("mode")
     data = resp.get("data", {})
 
@@ -409,7 +422,7 @@ def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = N
         mapped[name] = price
 
     current_investment = json.dumps(mapped, indent=2, ensure_ascii=False)
-    print(current_investment)
+    # print(current_investment)
 
 if __name__ == "__main__":
     if not API_KEY_POLYGON or not TICKETS:
@@ -424,7 +437,7 @@ if __name__ == "__main__":
         print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date)
         # Guardar archivo
         book.save(EXCEL_FILE)
-        print(f"✅ Archivo actualizado: {EXCEL_FILE}")
+        print(f"💰 Archivo actualizado: {EXCEL_FILE}")
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -478,7 +491,21 @@ def _send_html_pre(chat_id: str, title: str, body: str):
         "disable_web_page_preview": True,
     }
     r = requests.post(TELEGRAM_API, json=payload, timeout=30)
-    r.raise_for_status()
+    try:
+        r.raise_for_status()
+        print("💰 Mensaje enviado a Telegram")
+        return r.json()
+    except requests.HTTPError as e:
+        # mensaje útil si viene JSON
+        try:
+            msg = r.json().get("message") or r.text[:400]
+        except Exception:
+            msg = r.text[:400]
+        if r.status_code == 403:
+            raise PolygonForbidden(f"403 Forbidden: {msg}") from e
+        raise RuntimeError(f"HTTP {r.status_code}: {msg}") from e
+    except requests.RequestException as e:
+        raise RuntimeError(f"Error de red: {e}") from e
 
 def send_telegram_table(
     sheet_name: str,
@@ -532,31 +559,6 @@ def send_telegram_table(
     pages = max(1, math.ceil(n / rows_per_msg)) if rows_per_msg else 1
 
     for p in range(pages):
-        start = p * rows_per_msg
-        end = None if not rows_per_msg else start + rows_per_msg
-        page_df_fmt = df_fmt.iloc[start:end]  # 👈 usar el slice correcto
-
-        # body = tabulate(
-        #     page_df_fmt,
-        #     headers="keys",
-        #     tablefmt=tablefmt,
-        #     numalign="right",
-        #     stralign="left",
-        #     showindex=False
-        # )
-
-        # === NUEVO: agregar totales al final de la ÚLTIMA página ===
-        #if p == pages - 1:
-#
-        #    footer_lines = [
-        #        "",
-        #        f"Total Precio Compra: {total_precio:,.0f}",
-        #        f"Total Cantidad Actual: {total_cant:,.0f}",
-        #        f"✅ Ganancia: {diferencia:,.0f}" if (diferencia > 0) else f"❌ Pérdida: {diferencia:,.0f}",
-        #    ]
-        #    body = body + "\n" + "\n".join(footer_lines) + "\n\n"
-        
-        
         data = json.loads(current_investment)
         body = "\n".join(f"{name}: {price}" for name, price in data.items()) + "\n\n"
         print(body)
@@ -583,7 +585,7 @@ if telegram:
     ]
 
     send_telegram_table(
-        sheet_name="Totales",
+        sheet_name="Acciones invertidas",
         excel_path=EXCEL_FILE,        # usa tu constante existente
         columns=headers_list,
         top=20,
@@ -591,6 +593,6 @@ if telegram:
         ascending=False,
         rows_per_msg=12,
         tablefmt="github",
-        title="Totales",
+        title="Acciones invertidas",
         chat_id=DEFAULT_CHAT_ID
     )
