@@ -166,14 +166,14 @@ launchctl bootout gui/$UID/com.ricardo.crypto 2>/dev/null || true
 Lo cargo nuevamente
 
 ```
-launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.ricardo.crypto.plist
-launchctl kickstart -k gui/$UID/com.ricardo.crypto
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.ricardo.actions.plist
+launchctl kickstart -k gui/$UID/com.ricardo.actions
 ```
 
 Veo los logs en tiempo real
 
 ```
-tail -f /Users/Ricardo_/Library/Logs/crypto.cron.log
+tail -f /Users/Ricardo_/Library/Logs/actions.cron.log
 ```
 
 ### Resumen
