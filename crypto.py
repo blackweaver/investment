@@ -438,7 +438,7 @@ if top10:
             {"role": "system", "content": (
                 "I am aware that you are not a financial analyst, far from it."
                 "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
-                "However, I want you to gather the presumed opinions of some and tell me which 10 cryptos are presumed to be on the rise in the next six months."
+                "However, I want you to gather the opinions of the most prestigious analysts and tell me which ten cryptos are presumed to have a big growth in the next six months."
             )},
             {"role": "user", "content": (
                 "Your only response should be a valid Python list, for example ['BTC', 'ETH', 'SOL', ... 'reflection...'], with no explanations, no additional text."
@@ -629,10 +629,10 @@ if bajas:
             {"role": "system", "content": (
                 "I am aware that you are not a financial analyst, far from it."
                 "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
-                "However, I want you to gather the opinions of the most prestigious analysts and tell me which 10 cryptos that start at a very low price are presumed to have potential to rise in the next six months, based on the seriousness of those behind them."
+                "However, I want you to gather the opinions of the most prestigious analysts and tell me which ten cryptos that today have a low price per unit, are presumed will have potential to rise in the next six months."
             )},
             {"role": "user", "content": (
-                "Your only response should be a valid Python list, for example ['SOL', 'BNB', 'ABA'], with no explanations, no additional text."
+                "Your only response should be a valid Python list, for example ['SOL', 'BNB', 'ABA', ...], with no explanations, no additional text."
                 "Return them ordered, first the one with the most potential and so on."
             )}
         ]
@@ -667,7 +667,7 @@ if bajas:
 
     if top10_bajas:
         print("✅ Top 10 de bajas obtenido:", top10_bajas)
-        bajas_telegram = "✅ Top 3 bajas con potencial: " + ", ".join(top10[:3])
+        bajas_telegram = "✅ Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
         df_top10_bajas = pd.DataFrame({"Top 10 Cripto a bajo costo con potencial ": top10_bajas})
 
         for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
