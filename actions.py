@@ -22,6 +22,22 @@ from openpyxl.styles import PatternFill, Font
 from dotenv import load_dotenv
 load_dotenv()
 
+try:
+    # SDK 1.x
+    from openai import OpenAI
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    def chat(model, messages):
+        return client.chat.completions.create(model=model, messages=messages)
+except ImportError:
+    # SDK 0.28 (legacy)
+    import openai
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    def chat(model, messages):
+        return openai.ChatCompletion.create(model=model, messages=messages)
+
+# Uso:
+resp = chat("gpt-4o-mini", [{"role":"user","content":"Hola"}])
+
 # Variables de entorno (tal como pediste)
 API_KEY_POLYGON = os.getenv("API_KEY_POLYGON")
 TICKETS = os.getenv("TICKETS")
@@ -54,6 +70,9 @@ top10_telegram = ""
 bajas_telegram = ""
 
 args = parser.parse_args()
+montos_usd = {s: getattr(args, s.lower()) for s in TICKETS_SYMBOLS}
+wallets = {s: getattr(args, f"{s.lower()}_platform") for s in TICKETS_SYMBOLS}
+dates = {s: getattr(args, f"{s.lower()}_date") for s in TICKETS_SYMBOLS}
 top10 = args.top10
 bajas = args.bajas
 telegram = args.telegram
@@ -74,22 +93,6 @@ else:
     book = Workbook()
     book.remove(book.active)
 
-try:
-    # SDK 1.x
-    from openai import OpenAI
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    def chat(model, messages):
-        return client.chat.completions.create(model=model, messages=messages)
-except ImportError:
-    # SDK 0.28 (legacy)
-    import openai
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    def chat(model, messages):
-        return openai.ChatCompletion.create(model=model, messages=messages)
-
-# Uso:
-resp = chat("gpt-4o-mini", [{"role":"user","content":"Hola"}])
-
 
 # Totales
 # Crear hoja solo si no existe (se regenera cada vez)
@@ -101,10 +104,11 @@ sheet = book.create_sheet("Acciones invertidas")
 # Top 10
 if top10:
      # Crear hoja "top10"
-    if "Top 10 empresas del momento" in book.sheetnames:
-        del book["Top 10 empresas del momento"]
+    top10_header = "Top 10 acciones del momento"
+    if top10_header in book.sheetnames:
+        del book[top10_header]
 
-    sheet = book.create_sheet("Top 10 empresas del momento")
+    sheet = book.create_sheet(top10_header)
 
     def get_top10_crypto(max_retries=3, delay=2):
         prompt_messages = [
@@ -151,7 +155,7 @@ if top10:
     if top10:
         print("💰 Top 10 obtenido: ", top10)
         top10_telegram = "💰 Top 3 obtenido: " + ", ".join(top10[:3])
-        df_top10 = pd.DataFrame({"Top 10 empresas del momento": top10})
+        df_top10 = pd.DataFrame({top10_header: top10})
 
         for r in dataframe_to_rows(df_top10, index=False, header=True):
             sheet.append(r)
@@ -164,7 +168,6 @@ if top10:
             return None
 
         # --- Insertar o sobrescribir Top 10 ---
-        top10_header = "Top 10 empresas del momento"
         top10_row_idx = find_row_index(sheet, top10_header)
 
         if top10_row_idx:
@@ -179,10 +182,11 @@ if top10:
 
 if bajas:
      # Crear hoja "top10"
-    if "Top 10 acciones bajas" in book.sheetnames:
-        del book["Top 10 acciones bajas"]
+    top10_bajas_header = "Top 10 acciones a bajo costo con potencial"
+    if top10_bajas_header in book.sheetnames:
+        del book[top10_bajas_header]
 
-    sheet = book.create_sheet("Top 10 acciones bajas")
+    sheet = book.create_sheet(top10_bajas_header)
 
     def get_top10_bajas_acciones(max_retries=3, delay=2):
         prompt_messages = [
@@ -228,7 +232,7 @@ if bajas:
     if top10_bajas:
         print("💰 Top 10 de bajas obtenido:", top10_bajas)
         bajas_telegram = "💰 Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
-        df_top10_bajas = pd.DataFrame({"Top 10 acciones a bajo costo con potencial ": top10_bajas})
+        df_top10_bajas = pd.DataFrame({top10_bajas_header: top10_bajas})
 
         for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
             sheet.append(r)
@@ -241,7 +245,6 @@ if bajas:
             return None
 
         # --- Insertar o sobrescribir Top 10 ---
-        top10_bajas_header = "Top 10 acciones a bajo costo con potencial"
         top10_bajas_row_idx = find_row_index(sheet, top10_bajas_header)
 
         if top10_bajas_row_idx:

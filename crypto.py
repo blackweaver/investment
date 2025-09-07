@@ -427,11 +427,12 @@ top10_telegram = ""
 bajas_telegram = ""
 
 if top10:
+    top10_header = "Top 10 Cripto del momento"
      # Crear hoja "top10"
-    if "Top 10 Cripto del momento" in book.sheetnames:
-        del book["Top 10 Cripto del momento"]
+    if top10_header in book.sheetnames:
+        del book[top10_header]
 
-    sheet = book.create_sheet("Top 10 Cripto del momento")
+    sheet = book.create_sheet(top10_header)
 
     def get_top10_crypto(max_retries=3, delay=2):
         prompt_messages = [
@@ -477,9 +478,8 @@ if top10:
     top10 = get_top10_crypto()
 
     if top10:
-        print("✅ Top 10 obtenido: ", top10)
         top10_telegram = "✅ Top 3 obtenido: " + ", ".join(top10[:3])
-        df_top10 = pd.DataFrame({"Top 10 Cripto del momento": top10})
+        df_top10 = pd.DataFrame({top10_header: top10})
 
         for r in dataframe_to_rows(df_top10, index=False, header=True):
             sheet.append(r)
@@ -490,9 +490,7 @@ if top10:
                 if row and row[0] == target_text:
                     return i
             return None
-
-        # --- Insertar o sobrescribir Top 10 ---
-        top10_header = "Top 10 Cripto del momento"
+        
         top10_row_idx = find_row_index(sheet, top10_header)
 
         if top10_row_idx:
@@ -501,6 +499,82 @@ if top10:
                     sheet.cell(row=top10_row_idx + i, column=j, value=value)
         else:
             for r in dataframe_to_rows(df_top10, index=False, header=True):
+                sheet.append(r)
+    else:
+        print("❌ No se pudo obtener un Top 10 válido.")
+
+if bajas:
+    # --- Insertar o sobrescribir Top 10 ---
+    top10_bajas_header = "Top 10 Cripto bajas"
+     # Crear hoja "top10"
+    if top10_bajas_header in book.sheetnames:
+        del book[top10_bajas_header]
+
+    sheet = book.create_sheet(top10_bajas_header)
+
+    def get_top10_bajas_crypto(max_retries=3, delay=2):
+        prompt_messages = [
+            {"role": "system", "content": (
+                "I am aware that you are not a financial analyst, far from it."
+                "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
+                "However, I want you to gather the opinions of the most prestigious analysts and tell me which ten cryptos that today have a low price per unit, are presumed will have potential to rise in the next six months."
+            )},
+            {"role": "user", "content": (
+                "Your only response should be a valid Python list, for example ['SOL', 'BNB', 'ABA', ...], with no explanations, no additional text."
+                "Return them ordered, first the one with the most potential and so on."
+            )}
+        ]
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = client.chat.completions.create(model="gpt-4",
+                messages=prompt_messages)
+                top10_bajas_text = response.choices[0].message.content
+
+                # Intentar interpretar como lista Python
+                top10_bajas = ast.literal_eval(top10_bajas_text)
+
+                # Validar que sea lista con al menos un string
+                if isinstance(top10_bajas, list) and all(isinstance(x, str) for x in top10_bajas) and len(top10_bajas) > 0:
+                    return top10_bajas
+                else:
+                    print("⚠️ La respuesta no es una lista válida de strings no vacía.")
+
+            except Exception as e:
+                print(f"⚠️ Error al interpretar la respuesta (intento {attempt}): {e}")
+
+            if attempt < max_retries:
+                print("🔁 Reintentando...")
+                time.sleep(delay)
+
+        # Si todo falla, retornar None
+        return None
+
+    # Llamar a la función
+    top10_bajas = get_top10_bajas_crypto()
+
+    if top10_bajas:
+        bajas_telegram = "✅ Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
+        df_top10_bajas = pd.DataFrame({top10_bajas_header: top10_bajas})
+
+        for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
+            sheet.append(r)
+        
+         # --- Función para buscar si ya existe una fila con cierto texto ---
+        def find_row_index(sheet, target_text):
+            for i, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                if row and row[0] == target_text:
+                    return i
+            return None
+        
+        top10_bajas_row_idx = find_row_index(sheet, top10_bajas_header)
+
+        if top10_bajas_row_idx:
+            for i, r in enumerate(dataframe_to_rows(df_top10_bajas, index=False, header=True)):
+                for j, value in enumerate(r, start=1):
+                    sheet.cell(row=top10_bajas_row_idx + i, column=j, value=value)
+        else:
+            for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
                 sheet.append(r)
     else:
         print("❌ No se pudo obtener un Top 10 válido.")
@@ -616,83 +690,6 @@ if tendencia:
         ser.graphicalProperties.line.solidFill = list(COLUMN_COLORS.values())[i]
 
     sheet.add_chart(chart_norm, f"G30")
-
-if bajas:
-     # Crear hoja "top10"
-    if "Top 10 Cripto bajas" in book.sheetnames:
-        del book["Top 10 Cripto bajas"]
-
-    sheet = book.create_sheet("Top 10 Cripto bajas")
-
-    def get_top10_bajas_crypto(max_retries=3, delay=2):
-        prompt_messages = [
-            {"role": "system", "content": (
-                "I am aware that you are not a financial analyst, far from it."
-                "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
-                "However, I want you to gather the opinions of the most prestigious analysts and tell me which ten cryptos that today have a low price per unit, are presumed will have potential to rise in the next six months."
-            )},
-            {"role": "user", "content": (
-                "Your only response should be a valid Python list, for example ['SOL', 'BNB', 'ABA', ...], with no explanations, no additional text."
-                "Return them ordered, first the one with the most potential and so on."
-            )}
-        ]
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                response = client.chat.completions.create(model="gpt-4",
-                messages=prompt_messages)
-                top10_bajas_text = response.choices[0].message.content
-
-                # Intentar interpretar como lista Python
-                top10_bajas = ast.literal_eval(top10_bajas_text)
-
-                # Validar que sea lista con al menos un string
-                if isinstance(top10_bajas, list) and all(isinstance(x, str) for x in top10_bajas) and len(top10_bajas) > 0:
-                    return top10_bajas
-                else:
-                    print("⚠️ La respuesta no es una lista válida de strings no vacía.")
-
-            except Exception as e:
-                print(f"⚠️ Error al interpretar la respuesta (intento {attempt}): {e}")
-
-            if attempt < max_retries:
-                print("🔁 Reintentando...")
-                time.sleep(delay)
-
-        # Si todo falla, retornar None
-        return None
-
-    # Llamar a la función
-    top10_bajas = get_top10_bajas_crypto()
-
-    if top10_bajas:
-        print("✅ Top 10 de bajas obtenido:", top10_bajas)
-        bajas_telegram = "✅ Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
-        df_top10_bajas = pd.DataFrame({"Top 10 Cripto a bajo costo con potencial ": top10_bajas})
-
-        for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
-            sheet.append(r)
-        
-         # --- Función para buscar si ya existe una fila con cierto texto ---
-        def find_row_index(sheet, target_text):
-            for i, row in enumerate(sheet.iter_rows(values_only=True), start=1):
-                if row and row[0] == target_text:
-                    return i
-            return None
-
-        # --- Insertar o sobrescribir Top 10 ---
-        top10_bajas_header = "Top 10 Cripto a bajo costo con potencial"
-        top10_bajas_row_idx = find_row_index(sheet, top10_bajas_header)
-
-        if top10_bajas_row_idx:
-            for i, r in enumerate(dataframe_to_rows(df_top10_bajas, index=False, header=True)):
-                for j, value in enumerate(r, start=1):
-                    sheet.cell(row=top10_bajas_row_idx + i, column=j, value=value)
-        else:
-            for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
-                sheet.append(r)
-    else:
-        print("❌ No se pudo obtener un Top 10 válido.")
 
 if binance:    
     def create_signature(params, secret):
