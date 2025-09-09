@@ -131,103 +131,6 @@ def write_df_after_last(sheet: Worksheet, df: pd.DataFrame, header_row: int = 1,
 # Companies con montos actualizados
 currency_updates = []
 
-# --- Tu loop principal, usando las helpers ---
-for symbol in TICKETS_SYMBOLS:
-    try:
-        monto = montos_usd[symbol]
-        if not monto:
-            monto = 0  # si no hay monto, no seguimos
-
-        date_company = dates[symbol] or date.today()
-        precio_historico = get_price_on_date(symbol, date_company)
-
-        if not precio_historico:
-            print(f"⚠️ No se pudo obtener el precio histórico para {symbol} en {date_company}")
-            continue  # no seguimos si no hay precio
-
-        cantidad = round(monto / precio_historico, 8)
-        precio_compra = round(monto, 2)
-        valor_actual = round(precio_historico, 2)
-        wallet = wallets[symbol] or ""
-
-        fila = {
-            "Fecha de Compra": date_company,
-            "Compañía": symbol,
-            "Cantidad": cantidad,
-            "Precio Compra (USD)": precio_compra,
-            "Valor Actual (USD)": valor_actual,
-            "Plataforma": wallet,
-        }
-
-        currency_updates.append(symbol)
-        df = pd.DataFrame([fila])
-
-        # Crear solapa si no existe
-        if symbol in book.sheetnames:
-            sheet = book[symbol]
-        else:
-            sheet = book.create_sheet(symbol)
-            # encabezados
-            for r in dataframe_to_rows(pd.DataFrame(columns=HEADERS), index=False, header=True):
-                sheet.append(r)
-            # estilos de encabezado
-            for col_index, header in enumerate(HEADERS, start=1):
-                cell = sheet.cell(row=1, column=col_index)
-                cell.fill = PatternFill(
-                    start_color=COLUMN_ACTION_COLORS[symbol],
-                    end_color=COLUMN_ACTION_COLORS[symbol],
-                    fill_type="solid"
-                )
-                cell.font = Font(color="FFFFFF", bold=True)
-
-        # Si no hay cantidad (puede pasar por alguna división), no tiene sentido registrar
-        if cantidad:
-            # Agregar fila inmediatamente después de la última con datos reales
-            write_df_after_last(sheet, df)
-            print(f"✔ Entrada registrada para {symbol}")
-
-        # Calcular totales
-        headers = [cell.value for cell in sheet[1]]
-        try:
-            cantidad_idx = headers.index("Cantidad") + 1
-            precio_idx = headers.index("Precio Compra (USD)") + 1
-        except ValueError:
-            continue
-
-        resumen_row = 2
-        col_tot_cantidad = 8  # columna H
-        col_tot_precio = 9    # columna I
-
-        # Etiquetas Totales
-        cellTotal = sheet.cell(row=1, column=col_tot_cantidad, value="Total de acciones")
-        cellPrecio = sheet.cell(row=1, column=col_tot_precio, value="Total USD")
-        bgCell = PatternFill(
-            start_color=COLUMN_ACTION_COLORS[symbol],
-            end_color=COLUMN_ACTION_COLORS[symbol],
-            fill_type="solid"
-        )
-        colorCell = Font(color="FFFFFF", bold=True)
-        cellTotal.fill = cellPrecio.fill = bgCell
-        cellTotal.font = cellPrecio.font = colorCell
-
-        # Usa la última fila con datos reales, no max_row (que puede estar inflado por formatos)
-        ultima_dato = last_data_row(sheet, header_row=1, data_cols=DATA_COLS)
-
-        suma_cantidad = (
-            f"=SUM({get_column_letter(cantidad_idx)}2:{get_column_letter(cantidad_idx)}{ultima_dato})"
-            if cantidad_idx else "0"
-        )
-        suma_precio = (
-            f"=SUM({get_column_letter(precio_idx)}2:{get_column_letter(precio_idx)}{ultima_dato})"
-            if precio_idx else "0"
-        )
-        sheet.cell(row=resumen_row, column=col_tot_cantidad, value=suma_cantidad)
-        sheet.cell(row=resumen_row, column=col_tot_precio, value=suma_precio)
-
-    except Exception as e:
-        print(f"⚠️ Error procesando {symbol}: {e}")
-        continue
-
 # Top 10
 if top10:
      # Crear hoja "top10"
@@ -534,7 +437,7 @@ def fetch_quotes_polygon(symbols_csv: str, api_key: str, dateParam: Optional[str
             return {"mode": "prev", "data": results}
     
 current_investment = {}
-def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = None) -> None:
+def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = args.date, txt: bool = False) -> None:
     global current_investment
     """
     Imprime un objeto JSON { "Nombre Compañía": precio }.
@@ -542,7 +445,7 @@ def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = N
     - 'prev': usa el cierre del día anterior.
     """
     
-    resp = fetch_quotes_polygon(symbols_csv, api_key, args.date)
+    resp = fetch_quotes_polygon(symbols_csv, api_key, date)
     mode = resp.get("mode")
     data = resp.get("data", {})
 
@@ -560,7 +463,115 @@ def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = N
         mapped[name] = price
 
     current_investment = json.dumps(mapped, indent=2, ensure_ascii=False)
-    # print(current_investment)
+    return current_investment if txt else mapped
+
+def get_price_by_action(symbol: str, date: Optional[str] = args.date) -> dict:
+    ticker = print_quotes_polygon(symbol.upper(), API_KEY_POLYGON, date)
+    first_value = list(ticker.values())[0]
+    return first_value
+
+# --- Tu loop principal, usando las helpers ---
+for symbol in TICKETS_SYMBOLS:
+    # action = get_price_by_action("FIG")
+    # monto = montos_usd["FIG"]
+    # cantidad = round(monto * float(action), 8)
+    # print(f"Precio actual de FIG: ", cantidad)
+    if getattr(args, symbol, None):
+        try:
+            monto = montos_usd[symbol]
+            if not monto:
+                monto = 0  # si no hay monto, no seguimos
+
+            date_company = dates[symbol] or args.date
+            precio_historico = get_price_by_action(symbol, date_company)
+
+            if not precio_historico:
+                print(f"⚠️ No se pudo obtener el precio histórico para {symbol} en {date_company}")
+                continue  # no seguimos si no hay precio
+
+            cantidad = round(monto / precio_historico, 8)
+            precio_compra = round(monto, 2)
+            valor_actual = round(precio_historico, 2)
+            wallet = wallets[symbol] or ""
+
+            fila = {
+                "Fecha de Compra": date_company,
+                "Compañía": symbol,
+                "Cantidad": cantidad,
+                "Precio Compra (USD)": precio_compra,
+                "Valor Actual (USD)": valor_actual,
+                "Plataforma": wallet,
+            }
+
+            currency_updates.append(symbol)
+            df = pd.DataFrame([fila])
+
+            # Crear solapa si no existe
+            if symbol in book.sheetnames:
+                sheet = book[symbol]
+            else:
+                sheet = book.create_sheet(symbol)
+                # encabezados
+                for r in dataframe_to_rows(pd.DataFrame(columns=HEADERS), index=False, header=True):
+                    sheet.append(r)
+                # estilos de encabezado
+                for col_index, header in enumerate(HEADERS, start=1):
+                    cell = sheet.cell(row=1, column=col_index)
+                    cell.fill = PatternFill(
+                        start_color=COLUMN_ACTION_COLORS[symbol],
+                        end_color=COLUMN_ACTION_COLORS[symbol],
+                        fill_type="solid"
+                    )
+                    cell.font = Font(color="FFFFFF", bold=True)
+
+            # Si no hay cantidad (puede pasar por alguna división), no tiene sentido registrar
+            if cantidad:
+                # Agregar fila inmediatamente después de la última con datos reales
+                write_df_after_last(sheet, df)
+                print(f"✔ Entrada registrada para {symbol}")
+
+            # Calcular totales
+            headers = [cell.value for cell in sheet[1]]
+            try:
+                cantidad_idx = headers.index("Cantidad") + 1
+                precio_idx = headers.index("Precio Compra (USD)") + 1
+            except ValueError:
+                continue
+
+            resumen_row = 2
+            col_tot_cantidad = 8  # columna H
+            col_tot_precio = 9    # columna I
+
+            # Etiquetas Totales
+            cellTotal = sheet.cell(row=1, column=col_tot_cantidad, value="Total de acciones")
+            cellPrecio = sheet.cell(row=1, column=col_tot_precio, value="Total USD")
+            bgCell = PatternFill(
+                start_color=COLUMN_ACTION_COLORS[symbol],
+                end_color=COLUMN_ACTION_COLORS[symbol],
+                fill_type="solid"
+            )
+            colorCell = Font(color="FFFFFF", bold=True)
+            cellTotal.fill = cellPrecio.fill = bgCell
+            cellTotal.font = cellPrecio.font = colorCell
+
+            # Usa la última fila con datos reales, no max_row (que puede estar inflado por formatos)
+            ultima_dato = last_data_row(sheet, header_row=1, data_cols=DATA_COLS)
+
+            suma_cantidad = (
+                f"=SUM({get_column_letter(cantidad_idx)}2:{get_column_letter(cantidad_idx)}{ultima_dato})"
+                if cantidad_idx else "0"
+            )
+            suma_precio = (
+                f"=SUM({get_column_letter(precio_idx)}2:{get_column_letter(precio_idx)}{ultima_dato})"
+                if precio_idx else "0"
+            )
+            sheet.cell(row=resumen_row, column=col_tot_cantidad, value=suma_cantidad)
+            sheet.cell(row=resumen_row, column=col_tot_precio, value=suma_precio)
+
+        except Exception as e:
+            print(f"⚠️ Error procesando {symbol}: {e}")
+            continue
+
 
 if __name__ == "__main__":
     if not API_KEY_POLYGON or not TICKETS:
@@ -572,7 +583,8 @@ if __name__ == "__main__":
     try:
         # Usa exactamente las variables que definiste
         print("FECHA: ", {args.date})
-        print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date)
+        print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date, True)
+        
         # Guardar archivo
         book.save(EXCEL_FILE)
         print(f"💰 Archivo actualizado: {EXCEL_FILE}")
