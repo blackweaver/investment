@@ -54,12 +54,13 @@ HEADERS = [
     "Valor Actual (USD)", "Plataforma"
 ]
 
-TICKETS_SYMBOLS=["FIG","MNST","ITUB","XIACF"]
+TICKETS_SYMBOLS=["FIG","MNST","ITUB","XIACF","PLUG"]
 COLUMN_ACTION_COLORS = {
     "FIG": "FFA500",  # naranja
     "MNST": "8A2BE2",  # violeta
     "ITUB": "008000",   # verde
     "XIACF": "F0B90B",   # amarillo
+    "PLUG": "00AAE4",   # azul
 }
 
 # CLI args
@@ -74,6 +75,8 @@ for symbol in TICKETS_SYMBOLS:
         help="Fecha en formato YYYY-MM-DD (por defecto: hoy)"
     )
         
+parser.add_argument('--totales', action='store_true', help='Totales en hoja aparte')
+
 parser.add_argument('--top10', action='store_true', help='Ejecutar lógica para Top 10')
 parser.add_argument('--bajas', action='store_true', help='Ejecutar lógica para Bajas')
 parser.add_argument('--telegram', action='store_true', help='Enviar un mensaje al bot de telegram con la tabla de totales del excel')
@@ -94,6 +97,7 @@ dates = {s: getattr(args, f"{s.lower()}_date") for s in TICKETS_SYMBOLS}
 top10 = args.top10
 bajas = args.bajas
 telegram = args.telegram
+totales = args.totales
 
 # Cargar o crear archivo
 if os.path.exists(EXCEL_FILE):
@@ -295,6 +299,7 @@ if actions_sheet_name in book.sheetnames:
     del book[actions_sheet_name]
 
 sheet = book.create_sheet(actions_sheet_name)
+
 # ---------------------------
 # Excepciones y utilidades
 # ---------------------------
@@ -437,6 +442,35 @@ def fetch_quotes_polygon(symbols_csv: str, api_key: str, dateParam: Optional[str
             return {"mode": "prev", "data": results}
     
 current_investment = {}
+def print_quotes_polygon_by_symbol(
+    symbols_csv: str,
+    api_key: str,
+    date: Optional[str] = None,
+    txt: bool = False
+) -> Dict[str, float]:
+    """
+    Devuelve un diccionario { "TICKER": precio }.
+    - 'snapshot': usa lastTrade.p o day.c (del día en curso).
+    - 'prev': usa el cierre del día anterior.
+    """
+
+    resp = fetch_quotes_polygon(symbols_csv, api_key, date)
+    mode = resp.get("mode")
+    data = resp.get("data", {})
+
+    # 1) {ticker: price}
+    if mode == "snapshot":
+        prices_by_ticker = _extract_prices_from_snapshot(data)
+    else:
+        prices_by_ticker = _extract_prices_from_prev(data)
+
+    # 2) Devolver directamente {ticker: price}
+    if txt:
+        return json.dumps(prices_by_ticker, indent=2, ensure_ascii=False)
+    else:
+        return prices_by_ticker
+
+
 def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = args.date, txt: bool = False) -> None:
     global current_investment
     """
@@ -476,7 +510,8 @@ for symbol in TICKETS_SYMBOLS:
     # monto = montos_usd["FIG"]
     # cantidad = round(monto * float(action), 8)
     # print(f"Precio actual de FIG: ", cantidad)
-    if getattr(args, symbol, None):
+    print(getattr(args, symbol.lower(), None))
+    if getattr(args, symbol.lower(), None):
         try:
             monto = montos_usd[symbol]
             if not monto:
@@ -572,7 +607,88 @@ for symbol in TICKETS_SYMBOLS:
             print(f"⚠️ Error procesando {symbol}: {e}")
             continue
 
+if totales:
+    # Encabezados + columnas de totales
+    all_prices = print_quotes_polygon_by_symbol(TICKETS, API_KEY_POLYGON, args.date, False)   
 
+    headers = [
+        "Compañía",
+        "Cantidad Total",
+        "Precio Compra Total (USD)",
+        "Cantidad Actual",
+        "Ganancia/Perdida (USD)",
+        "Total Compra",   # suma de toda la col "Precio Compra Total (USD)"
+        "Total Actual",   # suma de toda la col "Cantidad Actual"
+        "Total Ganancia"  # suma de toda la col "Ganancia/Perdida (USD)"
+    ]
+    sheet.append(headers)
+
+    # Estilo de encabezados
+    for col_index, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=1, column=col_index)
+        cell.fill = PatternFill(start_color="222222", end_color="222222", fill_type="solid")
+        cell.font = Font(color="FFFFFF", bold=True)
+
+    # Reservamos la fila 2 para las sumas (debajo del encabezado)
+    sheet.insert_rows(2)
+
+    # Insertar nueva fila para cada cripto con datos (comienzan en fila 3)
+    for symbol in TICKETS_SYMBOLS:
+        if symbol not in currency_updates:
+            continue
+
+        cantidad_total = 0.0
+        precio_total = 0.0
+
+        if symbol in book.sheetnames:
+            sheet_symbol = book[symbol]
+            for row in sheet_symbol.iter_rows(min_row=2, values_only=True):
+                try:
+                    # Índices según tus HEADERS en cada hoja de cripto:
+                    # 0 Fecha de Compra, 1 Cripto, 2 Cantidad, 3 Precio Compra (USD), 4 Valor Actual (USD), ...
+                    cantidad_total += float(row[2]) if row[2] not in (None, "", "N/A") else 0.0
+                    precio_total   += float(row[3]) if row[3] not in (None, "", "N/A") else 0.0
+                except (ValueError, IndexError) as e:
+                    print(f"⚠️ Error procesando fila en {symbol}: {row} — {e}")
+                    continue
+
+        print(all_prices)
+        precio_actual = all_prices.get(symbol.strip().upper())
+        cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
+        cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
+        ganancia_perdida = round(cantidad_actual - precio_total, 2) if cantidad_actual != "" else ""
+
+        sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, "", "", ""])
+
+    # Ahora que ya están las filas, escribimos las SUMAS en la fila 2
+    last_row = sheet.max_row
+
+    # Columnas (1-indexed) según 'headers'
+    col_precio_compra = headers.index("Precio Compra Total (USD)") + 1  # C = 3
+    col_cantidad_actual = headers.index("Cantidad Actual") + 1           # D = 4
+    col_ganancia = headers.index("Ganancia/Perdida (USD)") + 1          # E = 5
+    col_total_compra = headers.index("Total Compra") + 1                # F = 6
+    col_total_actual = headers.index("Total Actual") + 1                # G = 7
+    col_total_ganancia = headers.index("Total Ganancia") + 1            # H = 8
+
+    # Si hay al menos una fila de datos (fila 3 en adelante), ponemos las fórmulas; si no, "0"
+    if last_row >= 3:
+        rango_compra   = f"{get_column_letter(col_precio_compra)}2:{get_column_letter(col_precio_compra)}{last_row}"
+        rango_actual   = f"{get_column_letter(col_cantidad_actual)}2:{get_column_letter(col_cantidad_actual)}{last_row}"
+        rango_ganancia = f"{get_column_letter(col_ganancia)}2:{get_column_letter(col_ganancia)}{last_row}"
+
+        sheet.cell(row=2, column=col_total_compra,   value=f"=SUM({rango_compra})")
+        sheet.cell(row=2, column=col_total_actual,   value=f"=SUM({rango_actual})")
+        sheet.cell(row=2, column=col_total_ganancia, value=f"=SUM({rango_ganancia})")
+    else:
+        sheet.cell(row=2, column=col_total_compra,   value="0")
+        sheet.cell(row=2, column=col_total_actual,   value="0")
+        sheet.cell(row=2, column=col_total_ganancia, value="0")
+
+    for col in (col_total_compra, col_total_actual, col_total_ganancia):
+        c = sheet.cell(row=2, column=col)
+        c.font = Font(bold=True)
+    
 if __name__ == "__main__":
     if not API_KEY_POLYGON or not TICKETS:
         print(
@@ -583,7 +699,8 @@ if __name__ == "__main__":
     try:
         # Usa exactamente las variables que definiste
         print("FECHA: ", {args.date})
-        print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date, True)
+        if telegram:
+            print_quotes_polygon_by_symbol(TICKETS, API_KEY_POLYGON, args.date, True)
         
         # Guardar archivo
         book.save(EXCEL_FILE)
@@ -709,7 +826,8 @@ def send_telegram_table(
     pages = max(1, math.ceil(n / rows_per_msg)) if rows_per_msg else 1
 
     for p in range(pages):
-        data = json.loads(current_investment)
+        # data = json.loads(current_investment)
+        data = current_investment
         body = "\n".join(f"{name}: {price}" for name, price in data.items()) + "\n\n"
         print(body)
             
