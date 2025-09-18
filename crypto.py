@@ -9,6 +9,7 @@ import hmac
 import math
 import html
 import hashlib
+import random
 from tabulate import tabulate
 from urllib.parse import urlencode
 from typing import Optional, List
@@ -45,23 +46,27 @@ API_SECRET = os.getenv("BINANCE_API_SECRET")
 BASE_URL = 'https://api.binance.com'
 
 EXCEL_FILE = "crypto.xlsx"
-CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL", "BCH", "BNB", "USDT"]
-BINANCE_IDS = {
-    "BTC": "bitcoin",
-    "ETH": "ethereum",
-    "SOL": "solana",
-    "BCH": "bitcoin-cash",
-    "BNB": "binancecoin",
-    "USDT": "tether",
-}
+
+CRYPTO = os.getenv("CRYPTO")
+CRYPTO_IDS = os.getenv("CRYPTO_IDS")
+
+CRYPTO_SYMBOLS = [t.strip() for t in CRYPTO.split(",") if t.strip()]
+def random_hex_color() -> str:
+    """Devuelve un color random en formato hex (ej: 'A1B2C3')."""
+    return f"{random.randint(0, 0xFFFFFF):06X}"
+
+# Construir el diccionario dinámicamente
 COLUMN_COLORS = {
-    "BTC": "FFA500",  # naranja
-    "ETH": "00BFFF",  # celeste
-    "SOL": "8A2BE2",  # violeta
-    "BCH": "008000",   # verde
-    "BNB": "F0B90B",   # amarillo
-    "USDT": "06402B",   # verde oscuro
+    symbol: random_hex_color() for symbol in CRYPTO_SYMBOLS
 }
+
+# Convertir a listas
+symbols = [s.strip() for s in CRYPTO.split(",") if s.strip()]
+ids = [i.strip() for i in CRYPTO_IDS.split(",") if i.strip()]
+
+# Construir el diccionario
+BINANCE_IDS = dict(zip(symbols, ids))
+
 HEADERS = [
     "Fecha de Compra", "Cripto", "Cantidad", "Precio Compra (USD)",
     "Valor Actual (USD)", "Wallet", "¿Stakeado? (Sí/No)"

@@ -8,6 +8,7 @@ import argparse
 import time
 import math
 import html
+import random
 from tabulate import tabulate
 import pandas as pd
 from typing import Dict, Any, List, Optional, Iterable
@@ -42,25 +43,37 @@ SNAPSHOT_URL = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tick
 PREV_URL_TMPL = "https://api.polygon.io/v2/aggs/ticker/{ticker}/prev"
 REF_TICKER_URL_TMPL = "https://api.polygon.io/v3/reference/tickers/{ticker}"
 HIST_URL_TMPL = "https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/{date}/{date}"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+DEFAULT_CHAT_ID = os.getenv("DEFAULT_CHAT_ID")
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+# Límite seguro para texto en Telegram (los bots aceptan ~4096 chars)
+TG_LIMIT = 4000
 
 EXCEL_FILE = "actions.xlsx"
+actions_sheet_name = "Acciones invertidas"
+current_investment = {}
+# Caché de nombres en memoria (podés persistirlo con shelve o json)
+name_cache: Dict[str, str] = {}
+# Companies con montos actualizados
+currency_updates = []
 
 # Variables de entorno (tal como pediste)
 API_KEY_POLYGON = os.getenv("API_KEY_POLYGON")
 TICKETS = os.getenv("TICKETS")
+
+TICKETS_SYMBOLS = [t.strip() for t in TICKETS.split(",") if t.strip()]
+def random_hex_color() -> str:
+    """Devuelve un color random en formato hex (ej: 'A1B2C3')."""
+    return f"{random.randint(0, 0xFFFFFF):06X}"
+
+# Construir el diccionario dinámicamente
+COLUMN_ACTION_COLORS = {
+    symbol: random_hex_color() for symbol in TICKETS_SYMBOLS
+}
 HEADERS = [
     "Fecha de Compra", "Compañía", "Cantidad", "Precio Compra (USD)",
     "Valor Actual (USD)", "Plataforma"
 ]
-
-TICKETS_SYMBOLS=["FIG","MNST","ITUB","XIACF","PLUG"]
-COLUMN_ACTION_COLORS = {
-    "FIG": "FFA500",  # naranja
-    "MNST": "8A2BE2",  # violeta
-    "ITUB": "008000",   # verde
-    "XIACF": "F0B90B",   # amarillo
-    "PLUG": "00AAE4",   # azul
-}
 
 # CLI args
 parser = argparse.ArgumentParser(conflict_handler="resolve")
@@ -130,9 +143,6 @@ def write_df_after_last(sheet: Worksheet, df: pd.DataFrame, header_row: int = 1,
             sheet.cell(row=r_idx, column=c_idx, value=val)
         r_idx += 1
     return r_idx - 1  # última fila escrita
-
-# Companies con montos actualizados
-currency_updates = []
 
 # Top 10
 if top10:
@@ -290,25 +300,9 @@ if bajas:
     else:
         print("❌ No se pudo obtener un Top 10 válido.")
 
-
-# Totales
-# Crear hoja solo si no existe (se regenera cada vez)
-actions_sheet_name = "Acciones invertidas"
-if actions_sheet_name in book.sheetnames:
-    del book[actions_sheet_name]
-
-sheet = book.create_sheet(actions_sheet_name)
-
-
-
 ## ----- POLYGON HELPERS -----
-# Caché de nombres en memoria (podés persistirlo con shelve o json)
-
-current_investment = {}
-name_cache: Dict[str, str] = {}
 
 # Rate limiter simple (usa el que te pasé antes si querés)
-
 class PolygonForbidden(Exception):
     """HTTP 403: tu plan no está habilitado para el endpoint/dato solicitado."""
 
@@ -508,113 +502,119 @@ def print_quotes_polygon(
 
     return current_investment_json if txt else mapped
 
-## ----- POLYGON FOOTER -----
-
 def get_price_by_action(symbol: str, date: Optional[str] = args.date) -> dict:
     ticker = print_quotes_polygon(symbol.upper(), API_KEY_POLYGON, date)
     first_value = list(ticker.values())[0]
     return first_value
 
+## ----- POLYGON FINISHED -----
+
 # --- Tu loop principal, usando las helpers ---
-for symbol in TICKETS_SYMBOLS:
-    print(getattr(args, symbol.lower(), None))
-    if getattr(args, symbol.lower(), None):
-        try:
-            monto = montos_usd[symbol]
-            if not monto:
-                monto = 0  # si no hay monto, no seguimos
-
-            date_company = dates[symbol] or args.date
-            precio_historico = get_price_by_action(symbol, date_company)
-
-            if not precio_historico:
-                print(f"⚠️ No se pudo obtener el precio histórico para {symbol} en {date_company}")
-                continue  # no seguimos si no hay precio
-
-            cantidad = round(monto / precio_historico, 8)
-            precio_compra = round(monto, 2)
-            valor_actual = round(precio_historico, 2)
-            wallet = wallets[symbol] or ""
-
-            fila = {
-                "Fecha de Compra": date_company,
-                "Compañía": symbol,
-                "Cantidad": cantidad,
-                "Precio Compra (USD)": precio_compra,
-                "Valor Actual (USD)": valor_actual,
-                "Plataforma": wallet,
-            }
-
-            currency_updates.append(symbol)
-            df = pd.DataFrame([fila])
-
-            # Crear solapa si no existe
-            if symbol in book.sheetnames:
-                sheet = book[symbol]
-            else:
-                sheet = book.create_sheet(symbol)
-                # encabezados
-                for r in dataframe_to_rows(pd.DataFrame(columns=HEADERS), index=False, header=True):
-                    sheet.append(r)
-                # estilos de encabezado
-                for col_index, header in enumerate(HEADERS, start=1):
-                    cell = sheet.cell(row=1, column=col_index)
-                    cell.fill = PatternFill(
-                        start_color=COLUMN_ACTION_COLORS[symbol],
-                        end_color=COLUMN_ACTION_COLORS[symbol],
-                        fill_type="solid"
-                    )
-                    cell.font = Font(color="FFFFFF", bold=True)
-
-            # Si no hay cantidad (puede pasar por alguna división), no tiene sentido registrar
-            if cantidad:
-                # Agregar fila inmediatamente después de la última con datos reales
-                write_df_after_last(sheet, df)
-                print(f"✔ Entrada registrada para {symbol}")
-
-            # Calcular totales
-            headers = [cell.value for cell in sheet[1]]
+def process_actions():
+    for symbol in TICKETS_SYMBOLS:
+        if getattr(args, symbol.lower(), None):
             try:
-                cantidad_idx = headers.index("Cantidad") + 1
-                precio_idx = headers.index("Precio Compra (USD)") + 1
-            except ValueError:
+                monto = montos_usd[symbol]
+                if not monto:
+                    monto = 0  # si no hay monto, no seguimos
+
+                date_company = dates[symbol] or date.today().strftime("%Y-%m-%d")
+                precio_historico = get_price_by_action(symbol, date_company)
+
+                if not precio_historico:
+                    print(f"⚠️ No se pudo obtener el precio histórico para {symbol} en {date_company}")
+                    continue  # no seguimos si no hay precio
+
+                cantidad = round(monto / precio_historico, 8)
+                precio_compra = round(monto, 2)
+                valor_actual = round(precio_historico, 2)
+                wallet = wallets[symbol] or ""
+
+                fila = {
+                    "Fecha de Compra": date_company,
+                    "Compañía": symbol,
+                    "Cantidad": cantidad,
+                    "Precio Compra (USD)": precio_compra,
+                    "Valor Actual (USD)": valor_actual,
+                    "Plataforma": wallet,
+                }
+
+                currency_updates.append(symbol)
+                df = pd.DataFrame([fila])
+
+                # Crear solapa si no existe
+                if symbol in book.sheetnames:
+                    sheet = book[symbol]
+                else:
+                    sheet = book.create_sheet(symbol)
+                    # encabezados
+                    for r in dataframe_to_rows(pd.DataFrame(columns=HEADERS), index=False, header=True):
+                        sheet.append(r)
+                    # estilos de encabezado
+                    for col_index, header in enumerate(HEADERS, start=1):
+                        cell = sheet.cell(row=1, column=col_index)
+                        cell.fill = PatternFill(
+                            start_color=COLUMN_ACTION_COLORS[symbol],
+                            end_color=COLUMN_ACTION_COLORS[symbol],
+                            fill_type="solid"
+                        )
+                        cell.font = Font(color="FFFFFF", bold=True)
+
+                # Si no hay cantidad (puede pasar por alguna división), no tiene sentido registrar
+                if cantidad:
+                    # Agregar fila inmediatamente después de la última con datos reales
+                    write_df_after_last(sheet, df)
+                    print(f"✔ Entrada registrada para {symbol}")
+
+                # Calcular totales
+                headers = [cell.value for cell in sheet[1]]
+                try:
+                    cantidad_idx = headers.index("Cantidad") + 1
+                    precio_idx = headers.index("Precio Compra (USD)") + 1
+                except ValueError:
+                    continue
+
+                resumen_row = 2
+                col_tot_cantidad = 7  # columna G
+                col_tot_precio = 8    # columna H
+
+                # Etiquetas Totales
+                cellTotal = sheet.cell(row=1, column=col_tot_cantidad, value="Total de acciones")
+                cellPrecio = sheet.cell(row=1, column=col_tot_precio, value="Total USD")
+                bgCell = PatternFill(
+                    start_color=COLUMN_ACTION_COLORS[symbol],
+                    end_color=COLUMN_ACTION_COLORS[symbol],
+                    fill_type="solid"
+                )
+                colorCell = Font(color="FFFFFF", bold=True)
+                cellTotal.fill = cellPrecio.fill = bgCell
+                cellTotal.font = cellPrecio.font = colorCell
+
+                # Usa la última fila con datos reales, no max_row (que puede estar inflado por formatos)
+                ultima_dato = last_data_row(sheet, header_row=1, data_cols=DATA_COLS)
+
+                suma_cantidad = (
+                    f"=SUM({get_column_letter(cantidad_idx)}2:{get_column_letter(cantidad_idx)}{ultima_dato})"
+                    if cantidad_idx else "0"
+                )
+                suma_precio = (
+                    f"=SUM({get_column_letter(precio_idx)}2:{get_column_letter(precio_idx)}{ultima_dato})"
+                    if precio_idx else "0"
+                )
+                sheet.cell(row=resumen_row, column=col_tot_cantidad, value=suma_cantidad)
+                sheet.cell(row=resumen_row, column=col_tot_precio, value=suma_precio)
+
+            except Exception as e:
+                print(f"⚠️ Error procesando {symbol}: {e}")
                 continue
+                
+def get_totales():
+    # Totales
+    global actions_sheet_name
+    if actions_sheet_name in book.sheetnames:
+        del book[actions_sheet_name]
 
-            resumen_row = 2
-            col_tot_cantidad = 8  # columna H
-            col_tot_precio = 9    # columna I
-
-            # Etiquetas Totales
-            cellTotal = sheet.cell(row=1, column=col_tot_cantidad, value="Total de acciones")
-            cellPrecio = sheet.cell(row=1, column=col_tot_precio, value="Total USD")
-            bgCell = PatternFill(
-                start_color=COLUMN_ACTION_COLORS[symbol],
-                end_color=COLUMN_ACTION_COLORS[symbol],
-                fill_type="solid"
-            )
-            colorCell = Font(color="FFFFFF", bold=True)
-            cellTotal.fill = cellPrecio.fill = bgCell
-            cellTotal.font = cellPrecio.font = colorCell
-
-            # Usa la última fila con datos reales, no max_row (que puede estar inflado por formatos)
-            ultima_dato = last_data_row(sheet, header_row=1, data_cols=DATA_COLS)
-
-            suma_cantidad = (
-                f"=SUM({get_column_letter(cantidad_idx)}2:{get_column_letter(cantidad_idx)}{ultima_dato})"
-                if cantidad_idx else "0"
-            )
-            suma_precio = (
-                f"=SUM({get_column_letter(precio_idx)}2:{get_column_letter(precio_idx)}{ultima_dato})"
-                if precio_idx else "0"
-            )
-            sheet.cell(row=resumen_row, column=col_tot_cantidad, value=suma_cantidad)
-            sheet.cell(row=resumen_row, column=col_tot_precio, value=suma_precio)
-
-        except Exception as e:
-            print(f"⚠️ Error procesando {symbol}: {e}")
-            continue
-
-if totales:
+    sheet = book.create_sheet(actions_sheet_name)
     # Encabezados + columnas de totales
     all_prices = print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date, False)   
 
@@ -641,7 +641,6 @@ if totales:
 
     # Insertar nueva fila para cada cripto con datos (comienzan en fila 3)
     for symbol in TICKETS_SYMBOLS:
-        print(symbol)
 
         cantidad_total = 0.0
         precio_total = 0.0
@@ -694,32 +693,6 @@ if totales:
     for col in (col_total_compra, col_total_actual, col_total_ganancia):
         c = sheet.cell(row=2, column=col)
         c.font = Font(bold=True)
-    
-if __name__ == "__main__":
-    if not API_KEY_POLYGON or not TICKETS:
-        print(
-            file=sys.stderr
-        )
-        sys.exit(2)
-
-    try:
-        # Usa exactamente las variables que definiste
-        if telegram:
-            print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date, True)
-        
-        # Guardar archivo
-        book.save(EXCEL_FILE)
-        print(f"💰 Archivo actualizado: {EXCEL_FILE}")
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-        
-        
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-DEFAULT_CHAT_ID = os.getenv("DEFAULT_CHAT_ID")
-TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-# Límite seguro para texto en Telegram (los bots aceptan ~4096 chars)
-TG_LIMIT = 4000
 
 def _read_sheet_values(excel_path: str, sheet_name: str) -> pd.DataFrame:
 
@@ -830,25 +803,46 @@ def send_telegram_table(
     n = len(df_fmt)
     pages = max(1, math.ceil(n / rows_per_msg)) if rows_per_msg else 1
 
-    data = current_investment or {}
-    
-    body = "\n".join(f"{name}: {price}" for name, price in data.items()) + "\n\n"
+    for p in range(pages):
+        start = p * rows_per_msg
+        end = None if not rows_per_msg else start + rows_per_msg
+        page_df_fmt = df_fmt.iloc[start:end]  # 👈 usar el slice correcto
+
+        body = tabulate(
+            page_df_fmt,
+            headers="keys",
+            tablefmt=tablefmt,
+            numalign="right",
+            stralign="left",
+            showindex=False
+        )
+
+        # === NUEVO: agregar totales al final de la ÚLTIMA página ===
+        if p == pages - 1:
+
+            footer_lines = [
+                "",
+                f"Total Precio Compra: {total_precio:,.0f}",
+                f"Total Cantidad Actual: {total_cant:,.0f}",
+                f"✅ Ganancia: {diferencia:,.0f}" if (diferencia > 0) else f"❌ Pérdida: {diferencia:,.0f}",
+            ]
+            body = body + "\n" + "\n".join(footer_lines) + "\n\n"
             
-    if top10_telegram != "":
-        body = body + "\n" + top10_telegram
-    if bajas_telegram != "":
-        body = body + "\n" + bajas_telegram
+        if top10_telegram != "":
+            body = body + "\n" + top10_telegram
+        if bajas_telegram != "":
+            body = body + "\n" + bajas_telegram
+
+        # Recorte ultraseguro si excede límites
+        if len(body) > 3900:
+            body = "\n".join(line[:120] for line in body.splitlines())
+
+        page_title = f"{title or sheet_name} ({p+1}/{pages})" if pages > 1 else (title or sheet_name)
+        _send_html_pre(chat_id, page_title, body)        
         
-    if len(body) > 3900:
-        body = "\n".join(line[:120] for line in body.splitlines())
-    
-    page_title = sheet_name or "Inversión en acciones"
-    _send_html_pre(chat_id, page_title, body)
-    
-        
-if telegram:
+def get_telegram():
     headers_list = [
-        "Cripto",
+        "Compañía",
         "Cantidad Total",
         "Precio Compra Total (USD)",
         "Cantidad Actual",
@@ -867,3 +861,26 @@ if telegram:
         title=actions_sheet_name,
         chat_id=DEFAULT_CHAT_ID
     )
+    
+if __name__ == "__main__":
+    if not API_KEY_POLYGON or not TICKETS:
+        print(
+            file=sys.stderr
+        )
+        sys.exit(2)
+
+    try:
+        # Usa exactamente las variables que definiste
+        if telegram:
+            print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date, True)
+            get_telegram()
+            
+        process_actions()
+        get_totales()
+        
+        # Guardar archivo
+        book.save(EXCEL_FILE)
+        print(f"💰 Archivo actualizado: {EXCEL_FILE}")
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
