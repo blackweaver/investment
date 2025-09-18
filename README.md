@@ -101,6 +101,16 @@ python crypto.py --usdt -100 --usdt_wallet binance --usdt_date 2025-08-10 --bnb 
 Enviando mensaje
 
 python crypto.py --telegram
+
+Para acciones
+
+python actions.py --fig 237 --fig_platform eToro --fig_date 2025-08-14
+python actions.py --xiacf 158 --xiacf_platform eToro --xiacf_date 2025-08-14
+python actions.py --itub 101 --itub_platform eToro --itub_date 2025-08-18
+python actions.py --mnst 101 --mnst_platform eToro --mnst_date 2025-08-18
+python actions.py --amzn 234 --amzn_platform eToro --amzn_date 2025-09-16
+python actions.py --plug 49 --plug_platform eToro --plug_date 2025-09-16
+
 ```
 
 ## Jypyter

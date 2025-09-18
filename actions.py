@@ -10,8 +10,7 @@ import math
 import html
 from tabulate import tabulate
 import pandas as pd
-from typing import Dict, Any, List
-from typing import Optional, List
+from typing import Dict, Any, List, Optional, Iterable
 from datetime import datetime, date, timedelta
 from openpyxl import load_workbook, Workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -300,20 +299,18 @@ if actions_sheet_name in book.sheetnames:
 
 sheet = book.create_sheet(actions_sheet_name)
 
-# ---------------------------
-# Excepciones y utilidades
-# ---------------------------
+
+
+## ----- POLYGON HELPERS -----
+# Caché de nombres en memoria (podés persistirlo con shelve o json)
+
+current_investment = {}
+name_cache: Dict[str, str] = {}
+
+# Rate limiter simple (usa el que te pasé antes si querés)
 
 class PolygonForbidden(Exception):
     """HTTP 403: tu plan no está habilitado para el endpoint/dato solicitado."""
-
-def _safe_get(d: dict, path: List[str], default=None):
-    cur = d
-    for k in path:
-        if not isinstance(cur, dict) or k not in cur:
-            return default
-        cur = cur[k]
-    return cur
 
 def _http_get_json(url: str, params: dict) -> dict:
     """GET con manejo de errores y retorno JSON."""
@@ -332,10 +329,41 @@ def _http_get_json(url: str, params: dict) -> dict:
         raise RuntimeError(f"HTTP {r.status_code}: {msg}") from e
     except requests.RequestException as e:
         raise RuntimeError(f"Error de red: {e}") from e
+class RateLimiter:
+    def __init__(self, max_calls: int, period: float = 60.0):
+        self.max_calls = max_calls
+        self.period = period
+        self.calls: List[float] = []
 
-# ---------------------------
-# Nombres de compañías
-# ---------------------------
+    def acquire(self) -> None:
+        now = time.monotonic()
+        self.calls = [t for t in self.calls if now - t < self.period]
+        if len(self.calls) >= self.max_calls:
+            sleep_for = self.period - (now - self.calls[0])
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+        self.calls.append(time.monotonic())
+
+# Configurá esto a tu plan (ej.: 5 rpm plan free)
+GLOBAL_RL = RateLimiter(max_calls=5, period=60.0)
+
+def _chunks(seq: Iterable[str], size: int) -> Iterable[List[str]]:
+    buff: List[str] = []
+    for x in seq:
+        buff.append(x)
+        if len(buff) == size:
+            yield buff
+            buff = []
+    if buff:
+        yield buff
+
+def _safe_get(d: dict, path: List[str], default=None):
+    cur = d
+    for k in path:
+        if not isinstance(cur, dict) or k not in cur:
+            return default
+        cur = cur[k]
+    return cur
 
 def _company_name(ticker: str, api_key: str, cache: Dict[str, str]) -> str:
     """
@@ -352,152 +380,135 @@ def _company_name(ticker: str, api_key: str, cache: Dict[str, str]) -> str:
         cache[ticker] = ticker
     return cache[ticker]
 
-# ---------------------------
-# Extracción de precios
-# ---------------------------
-
-def _extract_prices_from_snapshot(snapshot_payload: dict) -> Dict[str, float]:
+def fetch_quotes_polygon(
+    symbols_csv: str,
+    api_key: str,
+    date: Optional[str] = None,
+    *,
+    snapshot_chunk_size: int = 50,  # ajustá si tu endpoint limita cantidad por request
+) -> dict:
     """
-    Desde /v2/snapshot...:
-    - Prioriza lastTrade.p (último precio)
-    - Fallback: day.c (close del día)
-    Devuelve {ticker: precio}
-    """
-    out: Dict[str, float] = {}
-    for item in snapshot_payload.get("tickers", []):
-        t = item.get("ticker")
-        if not t:
-            continue
-        price = _safe_get(item, ["lastTrade", "p"])
-        if price is None:
-            price = _safe_get(item, ["day", "c"])
-        if price is not None:
-            try:
-                out[t] = float(price)
-            except (TypeError, ValueError):
-                pass
-    return out
-
-def _extract_prices_from_prev(prev_dict: Dict[str, Any]) -> Dict[str, float]:
-    """
-    Desde /v2/aggs/{ticker}/prev:
-    - Toma results[0].c (cierre del día anterior)
-    Devuelve {ticker: precio}
-    """
-    out: Dict[str, float] = {}
-    for t, payload in prev_dict.items():
-        results = payload.get("results") or []
-        if results:
-            c = results[0].get("c")
-            if c is not None:
-                try:
-                    out[t] = float(c)
-                except (TypeError, ValueError):
-                    pass
-    return out
-
-# ---------------------------
-# Lógica principal API Polygon
-# ---------------------------
-
-def fetch_price_on_date(ticker: str, date: str, api_key: str) -> dict:
-    """
-    Devuelve OHLC de un ticker en una fecha específica (YYYY-MM-DD).
-    """
-    url = HIST_URL_TMPL.format(ticker=ticker, date=date)
-    return _http_get_json(url, {"adjusted": "true", "apiKey": api_key})
-
-def fetch_quotes_polygon(symbols_csv: str, api_key: str, dateParam: Optional[str] = None) -> dict:
-    """
-    Si se pasa una fecha (YYYY-MM-DD), consulta /open-close para cada ticker.
-    Si no, intenta una sola llamada al snapshot múltiple.
-    Si 403 (no habilitado), hace fallback consultando /prev por cada ticker.
-    Retorna: {"mode": "snapshot"|"prev"|"historical", "data": <payload>}
+    - Si date (YYYY-MM-DD): histórico -> 1 llamada por ticker (no hay multi-ticker); usa rate limit.
+    - Si no hay date: intenta snapshot multi-ticker (chunkeado). Si 403 -> fallback a prev por ticker con rate limit.
+    Retorna {"mode": "snapshot"|"prev"|"historical", "data": ...}
     """
     symbols: List[str] = [s.strip().upper() for s in symbols_csv.split(",") if s.strip()]
     if not symbols:
         raise ValueError("Debes pasar al menos un símbolo separado por coma.")
-    # Caso histórico: se pidió una fecha
-    if dateParam:
+
+    # ---- Caso histórico (1 a 1) ----
+    if date:
         results: Dict[str, Any] = {}
         for t in symbols:
-            hist = _http_get_json(HIST_URL_TMPL.format(ticker=t, date=dateParam),
+            GLOBAL_RL.acquire()
+            hist = _http_get_json(HIST_URL_TMPL.format(ticker=t, date=date),
                                   {"adjusted": "true", "apiKey": api_key})
             results[t] = hist
         return {"mode": "historical", "data": results}
-    
-    if dateParam is None:
-        # Caso normal: snapshot múltiple
-        try:
-            print("Intento con la fecha de hoy")
-            snap = _http_get_json(SNAPSHOT_URL, {"tickers": ",".join(symbols), "apiKey": api_key})
-            return {"mode": "snapshot", "data": snap}
-        except PolygonForbidden:
-            # Fallback: previous close por cada ticker
-            results: Dict[str, Any] = {}
-            for t in symbols:
-                prev = _http_get_json(PREV_URL_TMPL.format(ticker=t),
-                                    {"adjusted": "true", "apiKey": api_key})
-                results[t] = prev
-            return {"mode": "prev", "data": results}
-    
-current_investment = {}
-def print_quotes_polygon_by_symbol(
+
+    # ---- Caso actual: snapshot multi-ticker (en chunks) ----
+    try:
+        all_snaps = []
+        for batch in _chunks(symbols, snapshot_chunk_size):
+            GLOBAL_RL.acquire()
+            snap = _http_get_json(SNAPSHOT_URL, {"tickers": ",".join(batch), "apiKey": api_key})
+            all_snaps.append(snap)
+        # combiná según tu estructura real de respuesta
+        combined = _merge_snapshot_payloads(all_snaps)
+        return {"mode": "snapshot", "data": combined}
+    except PolygonForbidden:
+        # ---- Fallback: prev por ticker (1 a 1) ----
+        results: Dict[str, Any] = {}
+        for t in symbols:
+            GLOBAL_RL.acquire()
+            prev = _http_get_json(PREV_URL_TMPL.format(ticker=t),
+                                  {"adjusted": "true", "apiKey": api_key})
+            results[t] = prev
+        return {"mode": "prev", "data": results}
+
+def _merge_snapshot_payloads(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Une varias respuestas de snapshot multi-ticker en una sola estructura.
+    Ajustá esto a la forma real que devuelva tu endpoint.
+    """
+    out: Dict[str, Any] = {"tickers": []}
+    for p in payloads:
+        tickers = p.get("tickers") or p.get("results") or []
+        if isinstance(tickers, dict):
+            # Si viniera en dict, normalizá a lista
+            tickers = [tickers]
+        out["tickers"].extend(tickers)
+    return out
+
+def _extract_prices_from_snapshot(snapshot_payload: Dict[str, Any]) -> Dict[str, float]:
+    """
+    Ajustá las rutas según tu snapshot real. Ejemplos comunes:
+    - lastTrade.p (precio del último trade)
+    - day.c (close del día en curso)
+    """
+    prices: Dict[str, float] = {}
+    for item in snapshot_payload.get("tickers", []):
+        t = item.get("ticker")
+        # Ejemplo de prioridades: lastTrade -> day.close -> prevDay.close
+        price = (
+            (item.get("lastTrade") or {}).get("p") or
+            (item.get("day") or {}).get("c") or
+            (item.get("prevDay") or {}).get("c")
+        )
+        if t and isinstance(price, (int, float)):
+            prices[t] = float(price)
+    return prices
+
+def _extract_prices_from_prev(prev_payloads: Dict[str, Any]) -> Dict[str, float]:
+    """
+    Estructura típica de prev: por ticker, results -> [ { c: close } ] ó results: { c: ... }
+    Ajustá según tu respuesta.
+    """
+    prices: Dict[str, float] = {}
+    for t, data in prev_payloads.items():
+        # Intenta varias formas comunes
+        r = data.get("results")
+        if isinstance(r, list) and r:
+            c = r[0].get("c")
+        elif isinstance(r, dict):
+            c = r.get("c")
+        else:
+            c = data.get("close")  # por si viene directo
+        if isinstance(c, (int, float)):
+            prices[t] = float(c)
+    return prices
+
+def print_quotes_polygon(
     symbols_csv: str,
     api_key: str,
     date: Optional[str] = None,
     txt: bool = False
-) -> Dict[str, float]:
+):
     """
-    Devuelve un diccionario { "TICKER": precio }.
-    - 'snapshot': usa lastTrade.p o day.c (del día en curso).
-    - 'prev': usa el cierre del día anterior.
+    Devuelve (o imprime) { "Nombre Compañía": precio }.
     """
-
     resp = fetch_quotes_polygon(symbols_csv, api_key, date)
     mode = resp.get("mode")
     data = resp.get("data", {})
 
-    # 1) {ticker: price}
     if mode == "snapshot":
         prices_by_ticker = _extract_prices_from_snapshot(data)
-    else:
+    else:  # "prev" o "historical"
         prices_by_ticker = _extract_prices_from_prev(data)
 
-    # 2) Devolver directamente {ticker: price}
-    if txt:
-        return json.dumps(prices_by_ticker, indent=2, ensure_ascii=False)
-    else:
-        return prices_by_ticker
-
-
-def print_quotes_polygon(symbols_csv: str, api_key: str, date: Optional[str] = args.date, txt: bool = False) -> None:
-    global current_investment
-    """
-    Imprime un objeto JSON { "Nombre Compañía": precio }.
-    - 'snapshot': usa lastTrade.p o day.c (del día en curso).
-    - 'prev': usa el cierre del día anterior.
-    """
-    
-    resp = fetch_quotes_polygon(symbols_csv, api_key, date)
-    mode = resp.get("mode")
-    data = resp.get("data", {})
-
-    # 1) {ticker: price}
-    if mode == "snapshot":
-        prices_by_ticker = _extract_prices_from_snapshot(data)
-    else:
-        prices_by_ticker = _extract_prices_from_prev(data)
-
-    # 2) Resolver nombres y mapear {Nombre: precio}
-    name_cache: Dict[str, str] = {}
     mapped: Dict[str, float] = {}
     for t, price in prices_by_ticker.items():
-        name = _company_name(t, api_key, name_cache)
+        name = _company_name(t, api_key, name_cache) if txt else t  # usa caché
         mapped[name] = price
 
-    current_investment = json.dumps(mapped, indent=2, ensure_ascii=False)
-    return current_investment if txt else mapped
+    # Guardar ambas versiones
+    global current_investment
+    current_investment = mapped  # queda como dict, usable en send_telegram_table
+    current_investment_json = json.dumps(mapped, indent=2, ensure_ascii=False)
+
+    return current_investment_json if txt else mapped
+
+## ----- POLYGON FOOTER -----
 
 def get_price_by_action(symbol: str, date: Optional[str] = args.date) -> dict:
     ticker = print_quotes_polygon(symbol.upper(), API_KEY_POLYGON, date)
@@ -506,10 +517,6 @@ def get_price_by_action(symbol: str, date: Optional[str] = args.date) -> dict:
 
 # --- Tu loop principal, usando las helpers ---
 for symbol in TICKETS_SYMBOLS:
-    # action = get_price_by_action("FIG")
-    # monto = montos_usd["FIG"]
-    # cantidad = round(monto * float(action), 8)
-    # print(f"Precio actual de FIG: ", cantidad)
     print(getattr(args, symbol.lower(), None))
     if getattr(args, symbol.lower(), None):
         try:
@@ -609,7 +616,7 @@ for symbol in TICKETS_SYMBOLS:
 
 if totales:
     # Encabezados + columnas de totales
-    all_prices = print_quotes_polygon_by_symbol(TICKETS, API_KEY_POLYGON, args.date, False)   
+    all_prices = print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date, False)   
 
     headers = [
         "Compañía",
@@ -634,8 +641,7 @@ if totales:
 
     # Insertar nueva fila para cada cripto con datos (comienzan en fila 3)
     for symbol in TICKETS_SYMBOLS:
-        if symbol not in currency_updates:
-            continue
+        print(symbol)
 
         cantidad_total = 0.0
         precio_total = 0.0
@@ -650,9 +656,9 @@ if totales:
                     precio_total   += float(row[3]) if row[3] not in (None, "", "N/A") else 0.0
                 except (ValueError, IndexError) as e:
                     print(f"⚠️ Error procesando fila en {symbol}: {row} — {e}")
-                    continue
+                    # continue
 
-        print(all_prices)
+        precio_actual = 0.0
         precio_actual = all_prices.get(symbol.strip().upper())
         cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
         cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
@@ -698,9 +704,8 @@ if __name__ == "__main__":
 
     try:
         # Usa exactamente las variables que definiste
-        print("FECHA: ", {args.date})
         if telegram:
-            print_quotes_polygon_by_symbol(TICKETS, API_KEY_POLYGON, args.date, True)
+            print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date, True)
         
         # Guardar archivo
         book.save(EXCEL_FILE)
@@ -825,23 +830,21 @@ def send_telegram_table(
     n = len(df_fmt)
     pages = max(1, math.ceil(n / rows_per_msg)) if rows_per_msg else 1
 
-    for p in range(pages):
-        # data = json.loads(current_investment)
-        data = current_investment
-        body = "\n".join(f"{name}: {price}" for name, price in data.items()) + "\n\n"
-        print(body)
+    data = current_investment or {}
+    
+    body = "\n".join(f"{name}: {price}" for name, price in data.items()) + "\n\n"
             
-        if top10_telegram != "":
-            body = body + "\n" + top10_telegram
-        if bajas_telegram != "":
-            body = body + "\n" + bajas_telegram
-
-        # Recorte ultraseguro si excede límites
-        if len(body) > 3900:
-            body = "\n".join(line[:120] for line in body.splitlines())
-
-        page_title = f"{title or sheet_name} ({p+1}/{pages})" if pages > 1 else (title or sheet_name)
-        _send_html_pre(chat_id, page_title, body)
+    if top10_telegram != "":
+        body = body + "\n" + top10_telegram
+    if bajas_telegram != "":
+        body = body + "\n" + bajas_telegram
+        
+    if len(body) > 3900:
+        body = "\n".join(line[:120] for line in body.splitlines())
+    
+    page_title = sheet_name or "Inversión en acciones"
+    _send_html_pre(chat_id, page_title, body)
+    
         
 if telegram:
     headers_list = [
