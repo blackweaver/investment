@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ricardo.crypto</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/Ricardo_/.venvs/crypto39/bin/python</string>
+    <string>/Users/Ricardo_/Library/CloudStorage/GoogleDrive-abcdise@gmail.com/My Drive/@@manual-del-guerrero/trading/app/crypto.py</string>
+    <string>--tendencia</string>
+    <string>--binance</string>
+    <string>--top10</string>
+    <string>--bajas</string>
+    <string>--telegram</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/Ricardo_/Library/CloudStorage/GoogleDrive-abcdise@gmail.com/My Drive/@@manual-del-guerrero/trading/app</string>
+
+  <!-- Programa por horario: ajusta según quieras -->
+  <key>StartCalendarInterval</key>
+  <integer>259200</integer>
+
+  <key>RunAtLoad</key><true/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/Users/Ricardo_/.venvs/crypto39/bin</string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+  </dict>
+
+  <key>StandardOutPath</key><string>/Users/Ricardo_/Library/Logs/crypto.cron.log</string>
+  <key>StandardErrorPath</key><string>/Users/Ricardo_/Library/Logs/crypto.cron.err.log</string>
+</dict>
+</plist>
