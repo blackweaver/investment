@@ -353,10 +353,11 @@ sheet = book.create_sheet("Totales")
 # Encabezados + columnas de totales
 headers = [
     "Cripto",
-    "Cantidad Total",
-    "Precio Compra Total (USD)",
-    "Cantidad Actual",
-    "Ganancia/Perdida (USD)",
+    "Cantidad",
+    "Compra (USD)",
+    "Actual (USD)",
+    "Ganancia/Perdida",
+    "Precio (USD)",
     "Total Compra",   # suma de toda la col "Precio Compra Total (USD)"
     "Total Actual",   # suma de toda la col "Cantidad Actual"
     "Total Ganancia"  # suma de toda la col "Ganancia/Perdida (USD)"
@@ -394,24 +395,25 @@ for symbol in CRYPTO_SYMBOLS:
 
     precio_actual = all_prices.get(symbol)
     cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
-    cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
     ganancia_perdida = round(cantidad_actual - precio_total, 2) if cantidad_actual != "" else ""
+    valor_actual = int(round(precio_actual)) if precio_actual else ""
 
-    sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, "", "", ""])
+    sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, valor_actual, "", "", ""])
 
 # Ahora que ya están las filas, escribimos las SUMAS en la fila 2
 last_row = sheet.max_row
 
 # Columnas (1-indexed) según 'headers'
-col_precio_compra = headers.index("Precio Compra Total (USD)") + 1  # C = 3
-col_cantidad_actual = headers.index("Cantidad Actual") + 1           # D = 4
-col_ganancia = headers.index("Ganancia/Perdida (USD)") + 1          # E = 5
-col_total_compra = headers.index("Total Compra") + 1                # F = 6
-col_total_actual = headers.index("Total Actual") + 1                # G = 7
-col_total_ganancia = headers.index("Total Ganancia") + 1            # H = 8
+col_precio_compra = headers.index("Compra (USD)") + 1  # C = 3
+col_cantidad_actual = headers.index("Actual (USD)") + 1          # D = 4
+col_ganancia = headers.index("Ganancia/Perdida") + 1          # E = 5
+col_precio_actual = headers.index("Precio (USD)") + 1               # F = 6
+col_total_compra = headers.index("Total Compra") + 1                # G = 7
+col_total_actual = headers.index("Total Actual") + 1                # H = 8
+col_total_ganancia = headers.index("Total Ganancia") + 1            # I = 9
 
 # Si hay al menos una fila de datos (fila 3 en adelante), ponemos las fórmulas; si no, "0"
-if last_row >= 3:
+if last_row >= 4:
     rango_compra   = f"{get_column_letter(col_precio_compra)}2:{get_column_letter(col_precio_compra)}{last_row}"
     rango_actual   = f"{get_column_letter(col_cantidad_actual)}2:{get_column_letter(col_cantidad_actual)}{last_row}"
     rango_ganancia = f"{get_column_letter(col_ganancia)}2:{get_column_letter(col_ganancia)}{last_row}"
@@ -968,15 +970,15 @@ def send_telegram_table(
         df = df.head(top)
 
     # === NUEVO: calcular totales y diferencia sobre datos numéricos ===
-    col_precio = "Precio Compra Total (USD)"
-    col_cant   = "Cantidad Actual"
+    col_precio = "Compra (USD)"
+    col_cant   = "Actual (USD)"
 
     precio_num = pd.to_numeric(df[col_precio], errors="coerce") if col_precio in df.columns else pd.Series(dtype=float)
     cant_num   = pd.to_numeric(df[col_cant], errors="coerce")   if col_cant   in df.columns else pd.Series(dtype=float)
 
     total_precio = float(precio_num.sum(skipna=True)) if len(precio_num) else 0.0
-    total_cant   = float(cant_num.sum(skipna=True))   if len(cant_num)   else 0.0
-    diferencia   = total_cant - total_precio
+    total_cant   = int(round(float(cant_num.sum(skipna=True)))) if len(cant_num) else 0
+    diferencia   = int(round(total_cant - total_precio))
 
     # 5) Limpieza final para visual
     df = df.replace({None: pd.NA}).fillna("")
@@ -1026,10 +1028,11 @@ def send_telegram_table(
 if telegram:
     headers_list = [
         "Cripto",
-        "Cantidad Total",
-        "Precio Compra Total (USD)",
-        "Cantidad Actual",
-        "Ganancia/Perdida (USD)"
+        "Cantidad",
+        "Compra (USD)",
+        "Actual (USD)",
+        "Ganancia/Perdida",
+        "Precio (USD)"
     ]
 
     send_telegram_table(

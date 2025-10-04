@@ -620,13 +620,14 @@ def get_totales():
 
     headers = [
         "Compañía",
-        "Cantidad Total",
-        "Precio Compra Total (USD)",
-        "Cantidad Actual",
-        "Ganancia/Perdida (USD)",
-        "Total Compra",   # suma de toda la col "Precio Compra Total (USD)"
-        "Total Actual",   # suma de toda la col "Cantidad Actual"
-        "Total Ganancia"  # suma de toda la col "Ganancia/Perdida (USD)"
+        "Total",
+        "Compra (USD)",
+        "Actual (USD)",
+        "Ganancia/Perdida",
+        "Precio (USD)",
+        "Total Compra",   # suma de toda la col "Compra (USD)"
+        "Total Actual",   # suma de toda la col "Actual (USD)"
+        "Total Ganancia"  # suma de toda la col "Ganancia/Perdida"
     ]
     sheet.append(headers)
 
@@ -659,25 +660,26 @@ def get_totales():
 
         precio_actual = 0.0
         precio_actual = all_prices.get(symbol.strip().upper())
-        cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
-        cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
-        ganancia_perdida = round(cantidad_actual - precio_total, 2) if cantidad_actual != "" else ""
+        cantidad_actual = int(round(cantidad_total * precio_actual)) if cantidad_total and precio_actual else ""
+        ganancia_perdida = int(round(cantidad_actual - precio_total)) if cantidad_actual != "" else ""
+        precio = int(round(precio_actual)) if precio_actual else ""
 
-        sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, "", "", ""])
+        sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, precio, "", "", ""])
 
     # Ahora que ya están las filas, escribimos las SUMAS en la fila 2
     last_row = sheet.max_row
 
     # Columnas (1-indexed) según 'headers'
-    col_precio_compra = headers.index("Precio Compra Total (USD)") + 1  # C = 3
-    col_cantidad_actual = headers.index("Cantidad Actual") + 1           # D = 4
-    col_ganancia = headers.index("Ganancia/Perdida (USD)") + 1          # E = 5
-    col_total_compra = headers.index("Total Compra") + 1                # F = 6
-    col_total_actual = headers.index("Total Actual") + 1                # G = 7
-    col_total_ganancia = headers.index("Total Ganancia") + 1            # H = 8
+    col_precio_compra = headers.index("Compra (USD)") + 1  # C = 3
+    col_cantidad_actual = headers.index("Actual (USD)") + 1          # D = 4
+    col_ganancia = headers.index("Ganancia/Perdida") + 1          # E = 5
+    col_precio_hoy = headers.index("Precio (USD)") + 1                  # F = 6
+    col_total_compra = headers.index("Total Compra") + 1                # G = 7
+    col_total_actual = headers.index("Total Actual") + 1                # H = 8
+    col_total_ganancia = headers.index("Total Ganancia") + 1            # I = 9
 
     # Si hay al menos una fila de datos (fila 3 en adelante), ponemos las fórmulas; si no, "0"
-    if last_row >= 3:
+    if last_row >= 4:
         rango_compra   = f"{get_column_letter(col_precio_compra)}2:{get_column_letter(col_precio_compra)}{last_row}"
         rango_actual   = f"{get_column_letter(col_cantidad_actual)}2:{get_column_letter(col_cantidad_actual)}{last_row}"
         rango_ganancia = f"{get_column_letter(col_ganancia)}2:{get_column_letter(col_ganancia)}{last_row}"
@@ -709,11 +711,12 @@ def _read_sheet_values(excel_path: str, sheet_name: str) -> pd.DataFrame:
 def _format_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
     """2 dec para USD/totales, 8 dec para cantidades; resto texto."""
     out = df.copy()
-    usd_like = { "Cripto",
-        "Cantidad Total",
-        "Precio Compra Total (USD)",
-        "Cantidad Actual",
-        "Ganancia/Perdida (USD)"}
+    usd_like = { "Compañía",
+        "Total",
+        "Compra (USD)",
+        "Actual (USD)",
+        "Ganancia/Perdida",
+        "Precio (USD)",}
     for c in out.columns:
         if pd.api.types.is_numeric_dtype(out[c]):
             if "Cantidad" in c and "USD" not in c:
@@ -785,15 +788,15 @@ def send_telegram_table(
         df = df.head(top)
 
     # === NUEVO: calcular totales y diferencia sobre datos numéricos ===
-    col_precio = "Precio Compra Total (USD)"
-    col_cant   = "Cantidad Actual"
+    col_precio = "Compra (USD)"
+    col_cant   = "Actual (USD)"
 
     precio_num = pd.to_numeric(df[col_precio], errors="coerce") if col_precio in df.columns else pd.Series(dtype=float)
     cant_num   = pd.to_numeric(df[col_cant], errors="coerce")   if col_cant   in df.columns else pd.Series(dtype=float)
 
-    total_precio = float(precio_num.sum(skipna=True)) if len(precio_num) else 0.0
-    total_cant   = float(cant_num.sum(skipna=True))   if len(cant_num)   else 0.0
-    diferencia   = total_cant - total_precio
+    total_precio = int(round(float(precio_num.sum(skipna=True)))) if len(precio_num) else 0.0
+    total_cant   = int(round(float(cant_num.sum(skipna=True))))   if len(cant_num)   else 0.0
+    diferencia   = int(round(total_cant - total_precio))
 
     # 5) Limpieza final para visual
     df = df.replace({None: pd.NA}).fillna("")
@@ -843,10 +846,11 @@ def send_telegram_table(
 def get_telegram():
     headers_list = [
         "Compañía",
-        "Cantidad Total",
-        "Precio Compra Total (USD)",
-        "Cantidad Actual",
-        "Ganancia/Perdida (USD)"
+        "Total",
+        "Compra (USD)",
+        "Actual (USD)",
+        "Ganancia/Perdida",
+        "Precio (USD)",
     ]
 
     send_telegram_table(
