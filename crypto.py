@@ -9,6 +9,7 @@ import hmac
 import math
 import html
 import hashlib
+import random
 from tabulate import tabulate
 from urllib.parse import urlencode
 from typing import Optional, List
@@ -45,23 +46,27 @@ API_SECRET = os.getenv("BINANCE_API_SECRET")
 BASE_URL = 'https://api.binance.com'
 
 EXCEL_FILE = "crypto.xlsx"
-CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL", "BCH", "BNB", "USDT"]
-BINANCE_IDS = {
-    "BTC": "bitcoin",
-    "ETH": "ethereum",
-    "SOL": "solana",
-    "BCH": "bitcoin-cash",
-    "BNB": "binancecoin",
-    "USDT": "tether",
-}
+
+CRYPTO = os.getenv("CRYPTO")
+CRYPTO_IDS = os.getenv("CRYPTO_IDS")
+
+CRYPTO_SYMBOLS = [t.strip() for t in CRYPTO.split(",") if t.strip()]
+def random_hex_color() -> str:
+    """Devuelve un color random en formato hex (ej: 'A1B2C3')."""
+    return f"{random.randint(0, 0xFFFFFF):06X}"
+
+# Construir el diccionario dinámicamente
 COLUMN_COLORS = {
-    "BTC": "FFA500",  # naranja
-    "ETH": "00BFFF",  # celeste
-    "SOL": "8A2BE2",  # violeta
-    "BCH": "008000",   # verde
-    "BNB": "F0B90B",   # amarillo
-    "USDT": "06402B",   # verde oscuro
+    symbol: random_hex_color() for symbol in CRYPTO_SYMBOLS
 }
+
+# Convertir a listas
+symbols = [s.strip() for s in CRYPTO.split(",") if s.strip()]
+ids = [i.strip() for i in CRYPTO_IDS.split(",") if i.strip()]
+
+# Construir el diccionario
+BINANCE_IDS = dict(zip(symbols, ids))
+
 HEADERS = [
     "Fecha de Compra", "Cripto", "Cantidad", "Precio Compra (USD)",
     "Valor Actual (USD)", "Wallet", "¿Stakeado? (Sí/No)"
@@ -348,10 +353,11 @@ sheet = book.create_sheet("Totales")
 # Encabezados + columnas de totales
 headers = [
     "Cripto",
-    "Cantidad Total",
-    "Precio Compra Total (USD)",
-    "Cantidad Actual",
-    "Ganancia/Perdida (USD)",
+    "Cantidad",
+    "Compra (USD)",
+    "Actual (USD)",
+    "Ganancia/Perdida",
+    "Precio (USD)",
     "Total Compra",   # suma de toda la col "Precio Compra Total (USD)"
     "Total Actual",   # suma de toda la col "Cantidad Actual"
     "Total Ganancia"  # suma de toda la col "Ganancia/Perdida (USD)"
@@ -389,24 +395,25 @@ for symbol in CRYPTO_SYMBOLS:
 
     precio_actual = all_prices.get(symbol)
     cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
-    cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
     ganancia_perdida = round(cantidad_actual - precio_total, 2) if cantidad_actual != "" else ""
+    valor_actual = int(round(precio_actual)) if precio_actual else ""
 
-    sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, "", "", ""])
+    sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, valor_actual, "", "", ""])
 
 # Ahora que ya están las filas, escribimos las SUMAS en la fila 2
 last_row = sheet.max_row
 
 # Columnas (1-indexed) según 'headers'
-col_precio_compra = headers.index("Precio Compra Total (USD)") + 1  # C = 3
-col_cantidad_actual = headers.index("Cantidad Actual") + 1           # D = 4
-col_ganancia = headers.index("Ganancia/Perdida (USD)") + 1          # E = 5
-col_total_compra = headers.index("Total Compra") + 1                # F = 6
-col_total_actual = headers.index("Total Actual") + 1                # G = 7
-col_total_ganancia = headers.index("Total Ganancia") + 1            # H = 8
+col_precio_compra = headers.index("Compra (USD)") + 1  # C = 3
+col_cantidad_actual = headers.index("Actual (USD)") + 1          # D = 4
+col_ganancia = headers.index("Ganancia/Perdida") + 1          # E = 5
+col_precio_actual = headers.index("Precio (USD)") + 1               # F = 6
+col_total_compra = headers.index("Total Compra") + 1                # G = 7
+col_total_actual = headers.index("Total Actual") + 1                # H = 8
+col_total_ganancia = headers.index("Total Ganancia") + 1            # I = 9
 
 # Si hay al menos una fila de datos (fila 3 en adelante), ponemos las fórmulas; si no, "0"
-if last_row >= 3:
+if last_row >= 4:
     rango_compra   = f"{get_column_letter(col_precio_compra)}2:{get_column_letter(col_precio_compra)}{last_row}"
     rango_actual   = f"{get_column_letter(col_cantidad_actual)}2:{get_column_letter(col_cantidad_actual)}{last_row}"
     rango_ganancia = f"{get_column_letter(col_ganancia)}2:{get_column_letter(col_ganancia)}{last_row}"
@@ -427,11 +434,12 @@ top10_telegram = ""
 bajas_telegram = ""
 
 if top10:
+    top10_header = "Top 10 Cripto del momento"
      # Crear hoja "top10"
-    if "Top 10 Cripto del momento" in book.sheetnames:
-        del book["Top 10 Cripto del momento"]
+    if top10_header in book.sheetnames:
+        del book[top10_header]
 
-    sheet = book.create_sheet("Top 10 Cripto del momento")
+    sheet = book.create_sheet(top10_header)
 
     def get_top10_crypto(max_retries=3, delay=2):
         prompt_messages = [
@@ -477,9 +485,8 @@ if top10:
     top10 = get_top10_crypto()
 
     if top10:
-        print("✅ Top 10 obtenido: ", top10)
         top10_telegram = "✅ Top 3 obtenido: " + ", ".join(top10[:3])
-        df_top10 = pd.DataFrame({"Top 10 Cripto del momento": top10})
+        df_top10 = pd.DataFrame({top10_header: top10})
 
         for r in dataframe_to_rows(df_top10, index=False, header=True):
             sheet.append(r)
@@ -490,9 +497,7 @@ if top10:
                 if row and row[0] == target_text:
                     return i
             return None
-
-        # --- Insertar o sobrescribir Top 10 ---
-        top10_header = "Top 10 Cripto del momento"
+        
         top10_row_idx = find_row_index(sheet, top10_header)
 
         if top10_row_idx:
@@ -501,6 +506,82 @@ if top10:
                     sheet.cell(row=top10_row_idx + i, column=j, value=value)
         else:
             for r in dataframe_to_rows(df_top10, index=False, header=True):
+                sheet.append(r)
+    else:
+        print("❌ No se pudo obtener un Top 10 válido.")
+
+if bajas:
+    # --- Insertar o sobrescribir Top 10 ---
+    top10_bajas_header = "Top 10 Cripto bajas"
+     # Crear hoja "top10"
+    if top10_bajas_header in book.sheetnames:
+        del book[top10_bajas_header]
+
+    sheet = book.create_sheet(top10_bajas_header)
+
+    def get_top10_bajas_crypto(max_retries=3, delay=2):
+        prompt_messages = [
+            {"role": "system", "content": (
+                "I am aware that you are not a financial analyst, far from it."
+                "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
+                "However, I want you to gather the opinions of the most prestigious analysts and tell me which ten cryptos that today have a low price per unit, are presumed will have potential to rise in the next six months."
+            )},
+            {"role": "user", "content": (
+                "Your only response should be a valid Python list, for example ['SOL', 'BNB', 'ABA', ...], with no explanations, no additional text."
+                "Return them ordered, first the one with the most potential and so on."
+            )}
+        ]
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = client.chat.completions.create(model="gpt-4",
+                messages=prompt_messages)
+                top10_bajas_text = response.choices[0].message.content
+
+                # Intentar interpretar como lista Python
+                top10_bajas = ast.literal_eval(top10_bajas_text)
+
+                # Validar que sea lista con al menos un string
+                if isinstance(top10_bajas, list) and all(isinstance(x, str) for x in top10_bajas) and len(top10_bajas) > 0:
+                    return top10_bajas
+                else:
+                    print("⚠️ La respuesta no es una lista válida de strings no vacía.")
+
+            except Exception as e:
+                print(f"⚠️ Error al interpretar la respuesta (intento {attempt}): {e}")
+
+            if attempt < max_retries:
+                print("🔁 Reintentando...")
+                time.sleep(delay)
+
+        # Si todo falla, retornar None
+        return None
+
+    # Llamar a la función
+    top10_bajas = get_top10_bajas_crypto()
+
+    if top10_bajas:
+        bajas_telegram = "✅ Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
+        df_top10_bajas = pd.DataFrame({top10_bajas_header: top10_bajas})
+
+        for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
+            sheet.append(r)
+        
+         # --- Función para buscar si ya existe una fila con cierto texto ---
+        def find_row_index(sheet, target_text):
+            for i, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                if row and row[0] == target_text:
+                    return i
+            return None
+        
+        top10_bajas_row_idx = find_row_index(sheet, top10_bajas_header)
+
+        if top10_bajas_row_idx:
+            for i, r in enumerate(dataframe_to_rows(df_top10_bajas, index=False, header=True)):
+                for j, value in enumerate(r, start=1):
+                    sheet.cell(row=top10_bajas_row_idx + i, column=j, value=value)
+        else:
+            for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
                 sheet.append(r)
     else:
         print("❌ No se pudo obtener un Top 10 válido.")
@@ -517,7 +598,7 @@ if tendencia:
     sheet.append(["Histórico de precios (USD) - Últimos 6 meses"])
 
     # Obtener históricos de precios
-    historical_symbols = ["BTC", "ETH", "SOL", "BCH", "BNB"]
+    historical_symbols = CRYPTO.split(",")
     df_hist = pd.DataFrame()
     for symbol in historical_symbols:
         df_temp = get_historical_prices(symbol)
@@ -616,83 +697,6 @@ if tendencia:
         ser.graphicalProperties.line.solidFill = list(COLUMN_COLORS.values())[i]
 
     sheet.add_chart(chart_norm, f"G30")
-
-if bajas:
-     # Crear hoja "top10"
-    if "Top 10 Cripto bajas" in book.sheetnames:
-        del book["Top 10 Cripto bajas"]
-
-    sheet = book.create_sheet("Top 10 Cripto bajas")
-
-    def get_top10_bajas_crypto(max_retries=3, delay=2):
-        prompt_messages = [
-            {"role": "system", "content": (
-                "I am aware that you are not a financial analyst, far from it."
-                "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
-                "However, I want you to gather the opinions of the most prestigious analysts and tell me which ten cryptos that today have a low price per unit, are presumed will have potential to rise in the next six months."
-            )},
-            {"role": "user", "content": (
-                "Your only response should be a valid Python list, for example ['SOL', 'BNB', 'ABA', ...], with no explanations, no additional text."
-                "Return them ordered, first the one with the most potential and so on."
-            )}
-        ]
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                response = client.chat.completions.create(model="gpt-4",
-                messages=prompt_messages)
-                top10_bajas_text = response.choices[0].message.content
-
-                # Intentar interpretar como lista Python
-                top10_bajas = ast.literal_eval(top10_bajas_text)
-
-                # Validar que sea lista con al menos un string
-                if isinstance(top10_bajas, list) and all(isinstance(x, str) for x in top10_bajas) and len(top10_bajas) > 0:
-                    return top10_bajas
-                else:
-                    print("⚠️ La respuesta no es una lista válida de strings no vacía.")
-
-            except Exception as e:
-                print(f"⚠️ Error al interpretar la respuesta (intento {attempt}): {e}")
-
-            if attempt < max_retries:
-                print("🔁 Reintentando...")
-                time.sleep(delay)
-
-        # Si todo falla, retornar None
-        return None
-
-    # Llamar a la función
-    top10_bajas = get_top10_bajas_crypto()
-
-    if top10_bajas:
-        print("✅ Top 10 de bajas obtenido:", top10_bajas)
-        bajas_telegram = "✅ Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
-        df_top10_bajas = pd.DataFrame({"Top 10 Cripto a bajo costo con potencial ": top10_bajas})
-
-        for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
-            sheet.append(r)
-        
-         # --- Función para buscar si ya existe una fila con cierto texto ---
-        def find_row_index(sheet, target_text):
-            for i, row in enumerate(sheet.iter_rows(values_only=True), start=1):
-                if row and row[0] == target_text:
-                    return i
-            return None
-
-        # --- Insertar o sobrescribir Top 10 ---
-        top10_bajas_header = "Top 10 Cripto a bajo costo con potencial"
-        top10_bajas_row_idx = find_row_index(sheet, top10_bajas_header)
-
-        if top10_bajas_row_idx:
-            for i, r in enumerate(dataframe_to_rows(df_top10_bajas, index=False, header=True)):
-                for j, value in enumerate(r, start=1):
-                    sheet.cell(row=top10_bajas_row_idx + i, column=j, value=value)
-        else:
-            for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
-                sheet.append(r)
-    else:
-        print("❌ No se pudo obtener un Top 10 válido.")
 
 if binance:    
     def create_signature(params, secret):
@@ -966,18 +970,26 @@ def send_telegram_table(
         df = df.head(top)
 
     # === NUEVO: calcular totales y diferencia sobre datos numéricos ===
-    col_precio = "Precio Compra Total (USD)"
-    col_cant   = "Cantidad Actual"
+    col_precio = "Compra (USD)"
+    col_cant   = "Actual (USD)"
 
     precio_num = pd.to_numeric(df[col_precio], errors="coerce") if col_precio in df.columns else pd.Series(dtype=float)
     cant_num   = pd.to_numeric(df[col_cant], errors="coerce")   if col_cant   in df.columns else pd.Series(dtype=float)
 
-    total_precio = float(precio_num.sum(skipna=True)) if len(precio_num) else 0.0
-    total_cant   = float(cant_num.sum(skipna=True))   if len(cant_num)   else 0.0
-    diferencia   = total_cant - total_precio
+    total_precio = float(precio_num.sum(skipna=True)) if len(precio_num) else 0
+    total_cant   = int(round(float(cant_num.sum(skipna=True)))) if len(cant_num) else 0
+    diferencia   = int(round(total_cant - total_precio))
 
     # 5) Limpieza final para visual
     df = df.replace({None: pd.NA}).fillna("")
+    
+    # 🔹 Convertir todas las columnas numéricas a enteros sin decimales
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            # Redondea y convierte solo si no hay valores NaN
+            df[col] = df[col].apply(
+                lambda x: int(round(x)) if pd.notna(x) else ""
+            )
 
     # 4) Formatear números para la tabla
     df_fmt = _format_numeric_columns(df)
@@ -1024,10 +1036,11 @@ def send_telegram_table(
 if telegram:
     headers_list = [
         "Cripto",
-        "Cantidad Total",
-        "Precio Compra Total (USD)",
-        "Cantidad Actual",
-        "Ganancia/Perdida (USD)"
+        "Cantidad",
+        "Compra (USD)",
+        "Actual (USD)",
+        "Ganancia/Perdida",
+        "Precio (USD)"
     ]
 
     send_telegram_table(

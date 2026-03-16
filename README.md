@@ -1,5 +1,11 @@
 ## 📝 Instrucciones:
 
+### Correr para recibir en el móvil
+
+Entorno de python: source ~/.venvs/crypto39/bin/activate
+python crypto.py --top10 --tendencia --telegram --bajas
+python actions.py --top10 --telegram --bajas
+
 Renombralo como .env (sin “example”).
 
 Abrilo y reemplazá la línea con tu clave real de OpenAI:
@@ -89,6 +95,8 @@ python crypto.py --btc 310 --btc_wallet prex --btc_date 2025-07-15 --eth 110 --e
 
 python crypto.py --usdt 100 --usdt_tax 1.05 --usdt_wallet binance --usdt_date 2025-07-26 --eth 300 --eth_wallet binance --eth_date 2025-07-26 --sol 80 --sol_wallet binance --sol_date 2025-07-26
 
+python crypto.py --ada 592 --ada_wallet binance --ada_date 2026-03-11 --usdt -155 --usdt_wallet binance --usdt_date 2026-03-11
+
 Retiros
 
 python crypto.py --eth -30 --eth_wallet prex
@@ -101,6 +109,16 @@ python crypto.py --usdt -100 --usdt_wallet binance --usdt_date 2025-08-10 --bnb 
 Enviando mensaje
 
 python crypto.py --telegram
+
+Para acciones
+
+python actions.py --fig 237 --fig_platform eToro --fig_date 2025-08-14
+python actions.py --xiacf 158 --xiacf_platform eToro --xiacf_date 2025-08-14
+python actions.py --itub 101 --itub_platform eToro --itub_date 2025-08-18
+python actions.py --mnst 101 --mnst_platform eToro --mnst_date 2025-08-18
+python actions.py --amzn 234 --amzn_platform eToro --amzn_date 2025-09-16
+python actions.py --plug 49 --plug_platform eToro --plug_date 2025-09-16
+
 ```
 
 ## Jypyter
@@ -111,7 +129,7 @@ Jupyter es un entorno interactivo donde podés escribir y ejecutar código (Pyth
 
 Porque en ciencia de datos y análisis, es muy cómodo para cargar un Excel, una base de datos o una API, y mostrar los resultados en tablas (pandas) o gráficos (matplotlib, plotly).
 
-Renderiza automáticamente los DataFrames como tablas con scroll, ordenamiento y estilos (en VS Code y JupyterLab es aún más visual).
+Renderiza automáticamente los DataFrames como tablas con scroll, ordenamiento y estilos (en VS Code y JupyterLab es aún más visual)
 
 Permite combinar código + visualización + notas explicativas en un mismo documento.
 
