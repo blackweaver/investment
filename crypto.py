@@ -598,7 +598,7 @@ if tendencia:
     sheet.append(["Histórico de precios (USD) - Últimos 6 meses"])
 
     # Obtener históricos de precios
-    historical_symbols = ["BTC", "ETH", "SOL", "BCH", "BNB"]
+    historical_symbols = CRYPTO.split(",")
     df_hist = pd.DataFrame()
     for symbol in historical_symbols:
         df_temp = get_historical_prices(symbol)
@@ -976,12 +976,20 @@ def send_telegram_table(
     precio_num = pd.to_numeric(df[col_precio], errors="coerce") if col_precio in df.columns else pd.Series(dtype=float)
     cant_num   = pd.to_numeric(df[col_cant], errors="coerce")   if col_cant   in df.columns else pd.Series(dtype=float)
 
-    total_precio = float(precio_num.sum(skipna=True)) if len(precio_num) else 0.0
+    total_precio = float(precio_num.sum(skipna=True)) if len(precio_num) else 0
     total_cant   = int(round(float(cant_num.sum(skipna=True)))) if len(cant_num) else 0
     diferencia   = int(round(total_cant - total_precio))
 
     # 5) Limpieza final para visual
     df = df.replace({None: pd.NA}).fillna("")
+    
+    # 🔹 Convertir todas las columnas numéricas a enteros sin decimales
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            # Redondea y convierte solo si no hay valores NaN
+            df[col] = df[col].apply(
+                lambda x: int(round(x)) if pd.notna(x) else ""
+            )
 
     # 4) Formatear números para la tabla
     df_fmt = _format_numeric_columns(df)

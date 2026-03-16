@@ -660,9 +660,9 @@ def get_totales():
 
         precio_actual = 0.0
         precio_actual = all_prices.get(symbol.strip().upper())
-        cantidad_actual = int(round(cantidad_total * precio_actual)) if cantidad_total and precio_actual else ""
-        ganancia_perdida = int(round(cantidad_actual - precio_total)) if cantidad_actual != "" else ""
-        precio = int(round(precio_actual)) if precio_actual else ""
+        cantidad_actual = round(cantidad_total * precio_actual) if cantidad_total and precio_actual else 0
+        ganancia_perdida = round(cantidad_actual - precio_total) if cantidad_actual != 0 else 0
+        precio = round(precio_actual) if precio_actual else 0
 
         sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, precio, "", "", ""])
 
@@ -794,12 +794,20 @@ def send_telegram_table(
     precio_num = pd.to_numeric(df[col_precio], errors="coerce") if col_precio in df.columns else pd.Series(dtype=float)
     cant_num   = pd.to_numeric(df[col_cant], errors="coerce")   if col_cant   in df.columns else pd.Series(dtype=float)
 
-    total_precio = int(round(float(precio_num.sum(skipna=True)))) if len(precio_num) else 0.0
-    total_cant   = int(round(float(cant_num.sum(skipna=True))))   if len(cant_num)   else 0.0
-    diferencia   = int(round(total_cant - total_precio))
+    total_precio = int(round(float(precio_num.sum(skipna=True)))) if len(precio_num) else 0
+    total_cant   = int(round(float(cant_num.sum(skipna=True))))   if len(cant_num)   else 0
+    diferencia   = total_cant - total_precio
 
     # 5) Limpieza final para visual
     df = df.replace({None: pd.NA}).fillna("")
+    
+    # 🔹 Convertir todas las columnas numéricas a enteros sin decimales
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            # Redondea y convierte solo si no hay valores NaN
+            df[col] = df[col].apply(
+                lambda x: int(round(x)) if pd.notna(x) else ""
+            )
 
     # 4) Formatear números para la tabla
     df_fmt = _format_numeric_columns(df)
