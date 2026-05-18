@@ -108,7 +108,8 @@ python crypto.py --usdt -100 --usdt_wallet binance --usdt_date 2025-08-10 --bnb 
 
 Enviando mensaje
 
-python crypto.py --telegram
+python crypto.py --top10 --bajas --binance --tendencia --telegram
+python actions.py --top10 --bajas --tendencia --telegram
 
 Para acciones
 
@@ -118,6 +119,11 @@ python actions.py --itub 101 --itub_platform eToro --itub_date 2025-08-18
 python actions.py --mnst 101 --mnst_platform eToro --mnst_date 2025-08-18
 python actions.py --amzn 234 --amzn_platform eToro --amzn_date 2025-09-16
 python actions.py --plug 49 --plug_platform eToro --plug_date 2025-09-16
+python actions.py --byddy 194 --byddy_platform eToro --byddy_date 2026-03-16
+
+Enviando mensaje
+
+python actions.py --telegram --top10 --bajas
 
 ```
 
@@ -178,30 +184,30 @@ plutil -lint ~/Library/LaunchAgents/com.ricardo.crypto.plist
 Bajo el anterior
 
 ```
-launchctl bootout gui/$UID/com.ricardo.crypto 2>/dev/null || true
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.ricardo.crypto.plist
 ```
 
 Lo cargo nuevamente
 
 ```
-launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.ricardo.actions.plist
-launchctl kickstart -k gui/$UID/com.ricardo.actions
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ricardo.crypto.plist
+launchctl kickstart -k gui/$(id -u)/com.ricardo.crypto
+launchctl enable gui/$(id -u)/com.ricardo.crypto
 ```
 
 Veo los logs en tiempo real
 
 ```
-tail -f /Users/Ricardo_/Library/Logs/actions.cron.log
+tail -f /Users/Ricardo_/Library/Logs/crypto.cron.log
 ```
 
-### Resumen
+Veo si está activo
 
 ```
-➜  ~ launchctl bootout gui/$UID/com.ricardo.crypto 2>/dev/null || true
-➜  ~ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.ricardo.crypto.plist
-➜  ~ launchctl kickstart -k gui/$UID/com.ricardo.crypto
-➜  ~ tail -f /Users/Ricardo_/Library/Logs/crypto.cron.log
+launchctl list | grep ricardo
 ```
+
+
 
 ## Bot automático de Telegram
 
