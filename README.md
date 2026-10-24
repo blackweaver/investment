@@ -205,8 +205,8 @@ tail -f /Users/Ricardo_/Library/Logs/actions.cron.log
 
 ## Bot automático de Telegram
 
-TELEGRAM_TOKEN=8156232694:AAFofDZNF-tJDJLr15-5aLJAhwzJXoiI1BU
-DEFAULT_CHAT_ID=5177802022
+TELEGRAM_TOKEN=xxxxxxxxxxxxxxxxxxxx
+DEFAULT_CHAT_ID=xxxxxxxxxx
 
 https://api.telegram.org/bot8156232694:AAFofDZNF-tJDJLr15-5aLJAhwzJXoiI1BU/getUpdates
 
