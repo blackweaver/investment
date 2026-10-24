@@ -208,7 +208,7 @@ tail -f /Users/Ricardo_/Library/Logs/actions.cron.log
 TELEGRAM_TOKEN=xxxxxxxxxxxxxxxxxxxx
 DEFAULT_CHAT_ID=xxxxxxxxxx
 
-https://api.telegram.org/bot8156232694:AAFofDZNF-tJDJLr15-5aLJAhwzJXoiI1BU/getUpdates
+https://api.telegram.org/botxxxxxxxxxxxxx/getUpdates
 
 Obtengo:
 
