@@ -264,7 +264,7 @@ for symbol in CRYPTO_SYMBOLS:
 
         cantidad = round(monto / precio_historico, 8)
         precio_compra = round(monto * usdt_tax, 2)
-        valor_actual = round(precio_historico, 2)
+        valor_actual = round(precio_historico, 4)
         wallet = wallets[symbol] or ""
 
         fila = {
@@ -398,7 +398,7 @@ for symbol in CRYPTO_SYMBOLS:
     precio_actual = all_prices.get(symbol)
     cantidad_actual = round(cantidad_total * precio_actual, 2) if cantidad_total and precio_actual else ""
     ganancia_perdida = round(cantidad_actual - precio_total, 2) if cantidad_actual != "" else ""
-    valor_actual = int(round(precio_actual)) if precio_actual else ""
+    valor_actual = round(precio_actual, 4) if precio_actual else ""
 
     sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, valor_actual, "", "", ""])
 
@@ -446,14 +446,12 @@ if top10:
     def get_top10_crypto(max_retries=3, delay=2):
         prompt_messages = [
             {"role": "system", "content": (
-                "I am aware that you are not a financial analyst, far from it."
-                "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
-                "However, I want you to gather the opinions of the most prestigious analysts and tell me which ten cryptos are presumed to have a big growth in the next six months."
+                "Could you tell me which three cryptocurrencies are currently furthest from their all-time high, but are predicted to rise again soon?"
             )},
             {"role": "user", "content": (
                 "Your only response should be a valid Python list, for example ['BTC', 'ETH', 'SOL', ... 'reflection...'], with no explanations, no additional text."
-                "Return them ordered, first the one expected to rise the most and so on."
-                "The last item in the array should not be one of the rising cryptos, but a random suggestion of a good trading practice to improve, considering general investment knowledge, but also practical suggestions for Binance tools."
+                "Return them ordered, first the one expected to the most and so on."
+                "The last item in the array should not be one of the cryptos, but a random suggestion of a good trading practice to improve, considering general investment knowledge, but also practical suggestions for Binance tools."
             )}
         ]
 
@@ -487,7 +485,7 @@ if top10:
     top10 = get_top10_crypto()
 
     if top10:
-        top10_telegram = "✅ Top 3 obtenido: " + ", ".join(top10[:3])
+        top10_telegram = "✅ Lejos de su máximo: " + ", ".join(top10[:3])
         df_top10 = pd.DataFrame({top10_header: top10})
 
         for r in dataframe_to_rows(df_top10, index=False, header=True):
@@ -524,13 +522,11 @@ if bajas:
     def get_top10_bajas_crypto(max_retries=3, delay=2):
         prompt_messages = [
             {"role": "system", "content": (
-                "I am aware that you are not a financial analyst, far from it."
-                "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
-                "However, I want you to gather the opinions of the most prestigious analysts and tell me which ten cryptos that today have a low price per unit, are presumed will have potential to rise in the next six months."
+                "Could you tell me which three cryptocurrencies are currently closest to or have surpassed their all-time high, but are predicted to be inflated and likely to drop again?"
             )},
             {"role": "user", "content": (
                 "Your only response should be a valid Python list, for example ['SOL', 'BNB', 'ABA', ...], with no explanations, no additional text."
-                "Return them ordered, first the one with the most potential and so on."
+                "Return them ordered, first the one expected to drop the most and so on."
             )}
         ]
 
@@ -563,7 +559,7 @@ if bajas:
     top10_bajas = get_top10_bajas_crypto()
 
     if top10_bajas:
-        bajas_telegram = "✅ Top 3 bajas con potencial: " + ", ".join(top10_bajas[:3])
+        bajas_telegram = "✅ Cerca de su máximo: " + ", ".join(top10_bajas[:3])
         df_top10_bajas = pd.DataFrame({top10_bajas_header: top10_bajas})
 
         for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):
@@ -985,13 +981,20 @@ def send_telegram_table(
     # 5) Limpieza final para visual
     df = df.replace({None: pd.NA}).fillna("")
     
-    # 🔹 Convertir todas las columnas numéricas a enteros sin decimales
+    # 🔹 Convertir columnas numéricas: enteros para USD grandes, decimales para precios bajos
+    cols_keep_decimals = {"Precio (USD)", "Cantidad"}  # columnas que necesitan decimales
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
-            # Redondea y convierte solo si no hay valores NaN
-            df[col] = df[col].apply(
-                lambda x: int(round(x)) if pd.notna(x) else ""
-            )
+            if col in cols_keep_decimals:
+                # Mantener hasta 4 decimales para precios/cantidades
+                df[col] = df[col].apply(
+                    lambda x: round(x, 4) if pd.notna(x) else ""
+                )
+            else:
+                # Redondea a entero para totales en USD
+                df[col] = df[col].apply(
+                    lambda x: int(round(x)) if pd.notna(x) else ""
+                )
 
     # 4) Formatear números para la tabla
     df_fmt = _format_numeric_columns(df)
