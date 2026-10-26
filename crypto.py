@@ -445,8 +445,10 @@ if top10:
 
     def get_top10_crypto(max_retries=3, delay=2):
         prompt_messages = [
-            {"role": "system", "content": (
-                "Could you tell me which three cryptocurrencies are currently furthest from their all-time high, but are predicted to rise again soon?"
+              {"role": "system", "content": (
+                "I am aware that you are not a financial analyst, far from it."
+                "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
+                "However, I want you to gather the opinions of the most prestigious analysts and tell me which cryptocurrencies are inflated and worth selling today. Which ones would you sell today?"
             )},
             {"role": "user", "content": (
                 "Your only response should be a valid Python list, for example ['BTC', 'ETH', 'SOL', ... 'reflection...'], with no explanations, no additional text."
@@ -485,7 +487,7 @@ if top10:
     top10 = get_top10_crypto()
 
     if top10:
-        top10_telegram = "✅ Lejos de su máximo: " + ", ".join(top10[:3])
+        top10_telegram = "✅ Conviene vender: " + ", ".join(top10[:3])
         df_top10 = pd.DataFrame({top10_header: top10})
 
         for r in dataframe_to_rows(df_top10, index=False, header=True):
@@ -522,11 +524,13 @@ if bajas:
     def get_top10_bajas_crypto(max_retries=3, delay=2):
         prompt_messages = [
             {"role": "system", "content": (
-                "Could you tell me which three cryptocurrencies are currently closest to or have surpassed their all-time high, but are predicted to be inflated and likely to drop again?"
+                "I am aware that you are not a financial analyst, far from it."
+                "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
+                "However, I want you to gather the opinions of the most prestigious analysts and tell me which cryptocurrencies are undervalued and worth buying today. Which ones would you buy today?"
             )},
             {"role": "user", "content": (
                 "Your only response should be a valid Python list, for example ['SOL', 'BNB', 'ABA', ...], with no explanations, no additional text."
-                "Return them ordered, first the one expected to drop the most and so on."
+                "Return them ordered, first the one with the most potential and so on."
             )}
         ]
 
@@ -559,7 +563,7 @@ if bajas:
     top10_bajas = get_top10_bajas_crypto()
 
     if top10_bajas:
-        bajas_telegram = "✅ Cerca de su máximo: " + ", ".join(top10_bajas[:3])
+        bajas_telegram = "✅ Conviene comprar: " + ", ".join(top10_bajas[:3])
         df_top10_bajas = pd.DataFrame({top10_bajas_header: top10_bajas})
 
         for r in dataframe_to_rows(df_top10_bajas, index=False, header=True):

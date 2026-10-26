@@ -1,247 +1,187 @@
-## 📝 Instrucciones:
+# Registro de inversiones
 
-### Correr para recibir en el móvil
+Scripts de Python para llevar un registro de acciones y criptomonedas en Excel. Permiten registrar movimientos, consultar precios, calcular resultados y enviar resúmenes a Telegram.
 
-Entorno de python: source ~/.venvs/crypto39/bin/activate
-python crypto.py --top10 --tendencia --telegram --bajas
-python actions.py --top10 --telegram --bajas
+- `actions.py`: registra compras y ventas de acciones en `actions.xlsx`, con cotizaciones de Polygon.
+- `crypto.py`: registra movimientos en `crypto.xlsx`, consulta precios en CoinGecko e históricos en Binance.
+- `scraping.py`: consulta precios de cierre en Stooq; incluye ejemplos que se ejecutan al correr el archivo.
+- `crypto.ipynb`: permite explorar los datos desde Jupyter.
 
-Renombralo como .env (sin “example”).
+## Instalación
 
-Abrilo y reemplazá la línea con tu clave real de OpenAI:
+Desde la carpeta del proyecto, creá y activá un entorno virtual:
 
-OPENAI_API_KEY=sk-tu_clave_aquí
-Ahora voy a generarte el script actualizar_registro_cripto.py que:
-
-✅ Carga tu API Key desde .env
-✅ Usa openai para consultar las 3 criptos más prometedoras según analistas
-✅ Actualiza el Excel agregando una fila por cripto con precio y notas
-
-Voy con eso ahora.
-
-Listo, Ricardo. Acá tenés el script final para automatizar tu registro cripto con integración a CoinGecko y OpenAI:
-
-## 📜 Descargar actualizar_registro_cripto.py
-
-🔑 Descargar .env.example
-
-## 🔧 ¿Cómo usarlo?
-
-Cocoa tu Excel Registro_Cripto_Historico.xlsx en la misma carpeta que el script.
-
-Renombrá y editá el archivo .env.example como .env con tu clave de OpenAI:
-
-OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-Instalá dependencias si no las tenés:
-
-pip install openai pandas openpyxl python-dotenv requests
-Ejecutá el script:
-
-python actualizar_registro_cripto.py
-
-## ✅ ¿Qué hace este script?
-
-Actualiza precios de BTC, ETH y SOL
-
-Crea (si no existe) o actualiza una hoja por cripto
-
-Agrega una nueva fila con:
-
-Fecha actual
-
-Precio simulado de compra (5% abajo)
-
-Precio actual
-
-Ganancia calculada
-
-Y en la columna "Notas", el resultado del análisis de ChatGPT
-
-¿Querés que más adelante agreguemos:
-
-Análisis de tendencia con TradingView?
-
-O que se conecte con tu billetera real (por ejemplo vía etherscan o Binance API)?
-
-Estoy listo cuando lo necesites.
-
-## Empezar proyecto en python
-
-1. Crear requirements.txt
-2. Lista de requerimientos:
-   openai pandas openpyxl python-dotenv requests
-3. Creo el entorno: python -m venv env
-4. Lo activo: source env/bin/activate (source ~/.venvs/crypto39/bin/activate)
-5. Instalo las librerías: pip install -r ./requirements.txt (-r significa leer desde...)
-6. Actualizar pip: python -m pip install --upgrade pip
-7. Mostrar los print en consola: python ./01_tratamiento_datos.py
-
-## Activar entorno por fuera de GoogleDrive
-
-source ~/.venvs/crypto39/bin/activate
-
-## OpenIA
-
-Cómo saber si tengo acceso a GPT-4
-
-`curl https://api.openai.com/v1/models \  -H "Authorization: Bearer TU_API_KEY"`
-
-## Ejemplo de ejecución completa con todos los parámetros desde la línea de comandos
-
-```
-python crypto.py --bch 8 --bch_wallet bitcoin.com --bch_date 2023-05-05 --btc 250 --btc_wallet bitcoin.com --btc_date 2022-08-20 --eth 100 --eth_wallet bitcoin.com --eth_date 2024-12-31 --tendencia --binance --top10
-
-python crypto.py --btc 310 --btc_wallet prex --btc_date 2025-07-15 --eth 110 --eth_wallet prex --eth_date 2025-07-15 --sol 80 --sol_wallet prex --sol_date 2025-07-15 --tendencia --binance --top10
-
-python crypto.py --usdt 100 --usdt_tax 1.05 --usdt_wallet binance --usdt_date 2025-07-26 --eth 300 --eth_wallet binance --eth_date 2025-07-26 --sol 80 --sol_wallet binance --sol_date 2025-07-26
-
-python crypto.py --ada 592 --ada_wallet binance --ada_date 2026-03-11 --usdt -155 --usdt_wallet binance --usdt_date 2026-03-11
-
-Retiros
-
-python crypto.py --eth -30 --eth_wallet prex
-python crypto.py --eth -40 --eth_wallet binance
-python crypto.py --btc -300 --btc_wallet bitcoin.com --btc_date 2025-07-15
-
-Cambio (Retiro + Agregado)
-python crypto.py --usdt -100 --usdt_wallet binance --usdt_date 2025-08-10 --bnb 100 --bnb_wallet binance --bnb_date 2025-08-10
-
-Enviando mensaje
-
-python crypto.py --top10 --bajas --binance --tendencia --telegram
-python actions.py --top10 --bajas --tendencia --telegram
-
-Para acciones
-
-python actions.py --fig 237 --fig_platform eToro --fig_date 2025-08-14
-python actions.py --xiacf 158 --xiacf_platform eToro --xiacf_date 2025-08-14
-python actions.py --itub 101 --itub_platform eToro --itub_date 2025-08-18
-python actions.py --mnst 101 --mnst_platform eToro --mnst_date 2025-08-18
-python actions.py --amzn 234 --amzn_platform eToro --amzn_date 2025-09-16
-python actions.py --plug 49 --plug_platform eToro --plug_date 2025-09-16
-python actions.py --byddy 194 --byddy_platform eToro --byddy_date 2026-03-16
-
-Enviando mensaje
-
-python actions.py --telegram --top10 --bajas
-
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install pandas openpyxl python-dotenv requests tabulate 'openai>=1,<2'
 ```
 
-## Jypyter
+`requirements.txt` está pendiente de actualizar: incluye módulos de la biblioteca estándar, un nombre incorrecto (`datatime`) y OpenAI 0.28. El comando anterior instala las dependencias usadas por los scripts, incluida la versión del SDK necesaria para las llamadas con `client`.
 
-Jupyter es un entorno interactivo donde podés escribir y ejecutar código (Python y otros lenguajes) celda por celda, y ver los resultados de inmediato, incluyendo tablas, gráficos, texto formateado, imágenes, etc..
+## Configuración
 
-### ¿Por qué se asocia tanto con “ver datos”?
+Creá un archivo `.env` junto a los scripts. Guardá las credenciales reales únicamente en ese archivo: está excluido del repositorio mediante `.gitignore`. El README usa valores de ejemplo; los montos, fechas y plataformas de los comandos también son ficticios.
 
-Porque en ciencia de datos y análisis, es muy cómodo para cargar un Excel, una base de datos o una API, y mostrar los resultados en tablas (pandas) o gráficos (matplotlib, plotly).
+```dotenv
+OPENAI_API_KEY=tu_clave_openai
 
-Renderiza automáticamente los DataFrames como tablas con scroll, ordenamiento y estilos (en VS Code y JupyterLab es aún más visual)
+API_KEY_POLYGON=tu_clave_polygon
+TICKETS=AAPL,MSFT,ITUB
 
-Permite combinar código + visualización + notas explicativas en un mismo documento.
+CRYPTO=BTC,ETH,SOL,BCH,BNB,USDT
+CRYPTO_IDS=bitcoin,ethereum,solana,bitcoin-cash,binancecoin,tether
 
-### Pero va mucho más allá - Con Jupyter también podés:
+BINANCE_API_KEY=tu_clave_binance
+BINANCE_API_SECRET=tu_secreto_binance
 
-Ejecutar y depurar funciones de tu aplicación (no solo mostrar datos).
-
-Probar consultas a APIs.
-
-Automatizar reportes.
-
-Hacer prototipado rápido de ideas y algoritmos.
-
-Documentar paso a paso un flujo de trabajo.
-
-Integrar texto (Markdown) con resultados en el mismo archivo.
-
-````
-# Le dice a Jupyter: "cada vez que ejecutes una celda, recargá todos los módulos que importaste".
-
-%load_ext autoreload
-%autoreload 2
-
-dfs = pd.read_excel("crypto.xlsx", sheet_name=None)  # None = todas las hojas
-
-# dfs es un diccionario: clave = nombre de hoja, valor = DataFrame
-for nombre, df in dfs.items():
-    print(f"--- {nombre} ---")
-    display(df)  # en Jupyter muestra tabla
+TELEGRAM_TOKEN=tu_token_telegram
+DEFAULT_CHAT_ID=tu_chat_id
 ```
 
-Ejectura archivo Jupyter:
+`TICKETS` define las acciones disponibles y genera sus argumentos de línea de comandos. `CRYPTO` hace lo mismo para las criptomonedas; `CRYPTO_IDS` debe contener sus identificadores de CoinGecko en el mismo orden y con la misma cantidad de elementos. Escribí los símbolos en mayúsculas, separados por comas y sin espacios.
+
+Las claves de Binance se usan para consultar la cuenta con `--binance`. Las de Telegram se usan con `--telegram`. La clave de OpenAI debe estar configurada al iniciar los scripts; `crypto.py` también hace una consulta inicial aunque no se pidan análisis.
+
+Ambos scripts cargan `.env` desde su propia carpeta. Los archivos Excel se leen y guardan en el directorio desde el que ejecutás el comando, por lo que conviene correrlos desde la carpeta del proyecto.
+
+## Acciones
+
+### Registrar compras
+
+Los montos se indican en USD. La cantidad de acciones se calcula a partir del precio consultado para la fecha de compra:
+
+```bash
+python actions.py --aapl 100 --aapl_platform ejemplo --aapl_date 2026-10-23
 ```
+
+Podés registrar varias compras en una ejecución. Cada símbolo configurado en `TICKETS` tiene los argumentos `--simbolo`, `--simbolo_platform` y `--simbolo_date`, escritos en minúsculas. La fecha es opcional y usa el día de ejecución por defecto.
+
+Las compras se agregan a una hoja por acción. El resumen `Acciones invertidas` muestra cantidades, inversión, valor actual, precio y ganancia o pérdida.
+
+### Actualizar cotizaciones y totales
+
+```bash
+python actions.py
+```
+
+Para consultar cotizaciones de una fecha determinada en el resumen:
+
+```bash
+python actions.py --date 2026-10-23
+```
+
+`--date` controla las cotizaciones del resumen; la fecha de cada compra se indica con `--simbolo_date`. Los totales se regeneran en cada ejecución; no hace falta pasar `--totales`.
+
+Las consultas de precios a Polygon incluyen un límite de cinco llamadas por minuto. Si el plan no permite consultar el snapshot, se intenta obtener el cierre anterior. Para compras, si la consulta histórica devuelve un error 403, se usa la cotización disponible como alternativa.
+
+### Registrar una venta total
+
+```bash
+python actions.py --sell AAPL --sell_total 125 --sell_date 2026-10-26
+```
+
+`--sell_total` es el importe total recibido en USD. El script registra la venta en la hoja `Ventas`, calcula el resultado respecto de toda la inversión acumulada y elimina la hoja de la acción vendida. Este comando cierra la posición completa. Si omitís `--sell_date`, se usa la fecha de ejecución.
+
+### Consultas con OpenAI
+
+- `--top10`: genera una lista de acciones con posible crecimiento.
+- `--bajas`: genera una lista de acciones a bajo costo con posible crecimiento.
+
+```bash
+python actions.py --top10 --bajas
+```
+
+## Criptomonedas
+
+### Registrar movimientos
+
+Los importes se indican en USD; el script calcula las cantidades usando el precio de la fecha indicada:
+
+```bash
+python crypto.py --btc 100 --btc_wallet ejemplo --btc_date 2026-10-23 --eth 50 --eth_wallet ejemplo --eth_date 2026-10-23
+```
+
+Cada símbolo configurado en `CRYPTO` tiene los argumentos `--simbolo`, `--simbolo_wallet` y `--simbolo_date`. Si omitís la fecha, se usa la del día de ejecución.
+
+Para registrar un retiro, usá un importe negativo:
+
+```bash
+python crypto.py --eth -40 --eth_wallet binance --eth_date 2026-10-23
+```
+
+Un cambio entre criptomonedas se registra como una salida y una entrada:
+
+```bash
+python crypto.py --usdt -100 --usdt_wallet binance --usdt_date 2026-10-23 --bnb 100 --bnb_wallet binance --bnb_date 2026-10-23
+```
+
+El argumento `--usdt_tax` permite aplicar un factor al importe de compra registrado; su valor por defecto es `1`. Se aplica a todos los movimientos de esa ejecución:
+
+```bash
+python crypto.py --usdt 100 --usdt_tax 1.05 --usdt_wallet binance
+```
+
+Cada cripto tiene su propia hoja de movimientos. La hoja `Totales` se regenera con la cantidad acumulada, inversión, valor actual, ganancia o pérdida y precio unitario. Los precios de cripto se registran con hasta cuatro decimales.
+
+### Actualizar precios y consultar información adicional
+
+```bash
+python crypto.py
+python crypto.py --tendencia --binance --top10 --bajas
+```
+
+- `--tendencia`: agrega históricos de los últimos 180 días y gráficos de evolución absoluta y normalizada.
+- `--binance`: consulta saldos de la cuenta y los guarda en hojas adicionales.
+- `--top10`: consulta criptomonedas que el modelo considera sobrevaloradas para una posible venta. La hoja conserva el nombre `Top 10 Cripto del momento`.
+- `--bajas`: consulta criptomonedas que el modelo considera infravaloradas para una posible compra.
+
+Las listas de ambos scripts son respuestas generadas por OpenAI; estas consultas no incorporan una búsqueda de noticias ni cotizaciones al modelo.
+
+## Telegram
+
+Configurá `TELEGRAM_TOKEN` y `DEFAULT_CHAT_ID` en `.env`. Para obtener el identificador del chat, enviá un mensaje al bot y consultá `https://api.telegram.org/bot<TU_TOKEN>/getUpdates`; el valor está en `message.chat.id`.
+
+```bash
+python crypto.py --telegram
+python actions.py --telegram
+```
+
+Los mensajes incluyen tablas con cantidades, inversión, valor actual y resultados. En acciones, el resultado final del mensaje también incorpora las ganancias o pérdidas registradas en `Ventas`.
+
+En `actions.py`, el envío lee el Excel guardado antes de actualizarlo. Para enviar un resumen actualizado, ejecutá primero `python actions.py` y después `python actions.py --telegram`.
+
+## Explorar el Excel con Jupyter
+
+```bash
+python -m pip install jupyterlab
 jupyter lab crypto.ipynb
-jupyter nbconvert --to script crypto.ipynb
 ```
 
-## Ejecutar script automático con un plist
+Para cargar todas las hojas desde una celda:
 
-Veo si está ok
+```python
+import pandas as pd
 
-```
-plutil -lint ~/Library/LaunchAgents/com.ricardo.crypto.plist
-```
-
-Bajo el anterior
-
-```
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.ricardo.crypto.plist
+hojas = pd.read_excel("crypto.xlsx", sheet_name=None)
+for nombre, datos in hojas.items():
+    print(nombre)
+    display(datos)
 ```
 
-Lo cargo nuevamente
+## Ejecución automática en macOS
 
-```
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ricardo.crypto.plist
-launchctl kickstart -k gui/$(id -u)/com.ricardo.crypto
-launchctl enable gui/$(id -u)/com.ricardo.crypto
-```
+Si usás un LaunchAgent, configurá en el `.plist` la ruta absoluta al Python del entorno virtual, al script y al directorio de trabajo (`WorkingDirectory`).
 
-Veo los logs en tiempo real
+Para validar y recargar un agente de acciones ya creado:
 
-```
-tail -f /Users/Ricardo_/Library/Logs/crypto.cron.log
-```
-
-Veo si está activo
-
-```
-launchctl list | grep ricardo
+```bash
+plutil -lint ~/Library/LaunchAgents/com.example.actions.plist
+launchctl bootout gui/$UID/com.example.actions
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.example.actions.plist
+launchctl kickstart -k gui/$UID/com.example.actions
+tail -f ~/Library/Logs/actions.cron.log
 ```
 
-
-
-## Bot automático de Telegram
-
-TELEGRAM_TOKEN=xxxxxxxxxxxxxxxxxxxx
-DEFAULT_CHAT_ID=xxxxxxxxxx
-
-https://api.telegram.org/botxxxxxxxxxxxxx/getUpdates
-
-Obtengo:
-
-```
-{
-ok: true,
-result: [
-{
-update_id: 187857952,
-message: {
-message_id: 3,
-from: {
-id: 5177802022,
-is_bot: false,
-first_name: "Ricardo",
-language_code: "es"
-},
-chat: {
-id: 5177802022,
-first_name: "Ricardo",
-type: "private"
-},
-date: 1755710616,
-text: "Hola, cómo estás?"
-}
-}
-]
-}
-```
-````
+El comando `bootout` puede devolver un error si el agente todavía no estaba cargado. Reemplazá `com.example.actions` por el identificador de tu agente; para cripto, por ejemplo, `com.example.crypto`. La ruta del log debe coincidir con la definida en el `.plist`.
