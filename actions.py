@@ -258,7 +258,7 @@ if bajas:
             {"role": "system", "content": (
                 "I am aware that you are not a financial analyst, far from it."
                 "I also know that no serious financial analyst would dare to predict the future or induce people to invest based on their recommendations."
-                "However, I want you to gather the opinions of the most prestigious analysts and tell me which 10 companies that start at a very low actions price are presumed to have potential to rise in the next six months."
+                "However, I want you to gather the opinions of the most prestigious analysts and tell me which 10 new companies that start at a very low actions price are presumed to have potential to rise in the next six months."
             )},
             {"role": "user", "content": (
                 "Your only response should be a valid Python list, for example ['Figma','Monster','Itaú','Xiaomi', ... 'reflection...'], with no explanations, no additional text."
