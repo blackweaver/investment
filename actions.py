@@ -19,8 +19,12 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.chart import LineChart, Reference
 from openpyxl.styles import PatternFill, Font
+from pathlib import Path
+
 from dotenv import load_dotenv
-load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 try:
     # SDK 1.x
@@ -35,9 +39,6 @@ except ImportError:
     def chat(model, messages):
         return openai.ChatCompletion.create(model=model, messages=messages)
 
-# Uso:
-resp = chat("gpt-4o-mini", [{"role":"user","content":"Hola"}])
-
 # Endpoints Polygon
 SNAPSHOT_URL = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
 PREV_URL_TMPL = "https://api.polygon.io/v2/aggs/ticker/{ticker}/prev"
@@ -51,6 +52,7 @@ TG_LIMIT = 4000
 
 EXCEL_FILE = "actions.xlsx"
 actions_sheet_name = "Acciones invertidas"
+REALIZED_SHEET = "Ventas"
 current_investment = {}
 # Caché de nombres en memoria (podés persistirlo con shelve o json)
 name_cache: Dict[str, str] = {}
@@ -75,8 +77,28 @@ HEADERS = [
     "Valor Actual (USD)", "Plataforma"
 ]
 
+# Cargar o crear archivo
+if os.path.exists(EXCEL_FILE):
+    book = load_workbook(EXCEL_FILE)
+else:
+    book = Workbook()
+    book.remove(book.active)
+    
+def get_price_on_date(symbol, fecha: date = date.today()):
+    print(symbol, fecha)
+    return None
+
 # CLI args
 parser = argparse.ArgumentParser(conflict_handler="resolve")
+if REALIZED_SHEET in book.sheetnames:
+    realized_sheet = book[REALIZED_SHEET]
+
+    for row in realized_sheet.iter_rows(min_row=2, values_only=True):
+        try:
+            ganancia_realizada_total += float(row[4])
+        except Exception:
+            pass
+        
 for symbol in TICKETS_SYMBOLS:
     parser.add_argument(f"--{symbol.lower()}", type=float, default=None)
     parser.add_argument(f"--{symbol.lower()}_platform", type=str, default="")
@@ -92,6 +114,14 @@ parser.add_argument('--totales', action='store_true', help='Totales en hoja apar
 parser.add_argument('--top10', action='store_true', help='Ejecutar lógica para Top 10')
 parser.add_argument('--bajas', action='store_true', help='Ejecutar lógica para Bajas')
 parser.add_argument('--telegram', action='store_true', help='Enviar un mensaje al bot de telegram con la tabla de totales del excel')
+parser.add_argument("--sell", type=str, help="Ticker a vender")
+parser.add_argument("--sell_total", type=float, help="Monto total recibido")
+parser.add_argument(
+    "--sell_date",
+    type=lambda s: datetime.strptime(s, "%Y-%m-%d").date(),
+    default=date.today(),
+    help="Fecha de venta YYYY-MM-DD"
+)
 parser.add_argument(
     "--date",
     type=lambda s: datetime.strptime(s, "%Y-%m-%d").strftime("%Y-%m-%d"),
@@ -110,17 +140,9 @@ top10 = args.top10
 bajas = args.bajas
 telegram = args.telegram
 totales = args.totales
-
-# Cargar o crear archivo
-if os.path.exists(EXCEL_FILE):
-    book = load_workbook(EXCEL_FILE)
-else:
-    book = Workbook()
-    book.remove(book.active)
-    
-def get_price_on_date(symbol, fecha: date = date.today()):
-    print(symbol, fecha)
-    return None
+sell_symbol = args.sell.upper() if args.sell else None
+sell_total = args.sell_total
+sell_date = args.sell_date
 
 DATA_COLS = range(1, 8)
 
@@ -502,10 +524,37 @@ def print_quotes_polygon(
 
     return current_investment_json if txt else mapped
 
-def get_price_by_action(symbol: str, date: Optional[str] = args.date) -> dict:
-    ticker = print_quotes_polygon(symbol.upper(), API_KEY_POLYGON, date)
-    first_value = list(ticker.values())[0]
-    return first_value
+def get_price_by_action(symbol: str, date: Optional[str] = args.date):
+
+    try:
+        ticker = print_quotes_polygon(
+            symbol.upper(),
+            API_KEY_POLYGON,
+            date
+        )
+
+        first_value = list(ticker.values())[0]
+        return first_value
+
+    except Exception as e:
+
+        # Fallback si Polygon bloquea históricos
+        if "403" in str(e):
+            print(
+                f"⚠️ Histórico no disponible para {symbol}. "
+                f"Usando precio actual."
+            )
+
+            ticker = print_quotes_polygon(
+                symbol.upper(),
+                API_KEY_POLYGON,
+                None
+            )
+
+            first_value = list(ticker.values())[0]
+            return first_value
+
+        raise
 
 ## ----- POLYGON FINISHED -----
 
@@ -625,11 +674,25 @@ def get_totales():
         "Actual (USD)",
         "Ganancia/Perdida",
         "Precio (USD)",
-        "Total Compra",   # suma de toda la col "Compra (USD)"
-        "Total Actual",   # suma de toda la col "Actual (USD)"
-        "Total Ganancia"  # suma de toda la col "Ganancia/Perdida"
+        "Total + Ventas",
+        "Total Compra",
+        "Total Actual",
+        "Total Ganancia"
     ]
     sheet.append(headers)
+    
+    total_ventas = 0.0
+
+    if REALIZED_SHEET in book.sheetnames:
+        realized_sheet = book[REALIZED_SHEET]
+
+        for row in realized_sheet.iter_rows(min_row=2, values_only=True):
+            try:
+                total_ventas += float(row[4])
+            except Exception:
+                pass
+    
+    ganancia_realizada_total = 0.0
 
     # Estilo de encabezados
     for col_index, header in enumerate(headers, start=1):
@@ -639,9 +702,14 @@ def get_totales():
 
     # Reservamos la fila 2 para las sumas (debajo del encabezado)
     sheet.insert_rows(2)
+    
+    active_symbols = [
+        s for s in TICKETS_SYMBOLS
+        if s in book.sheetnames
+    ]
 
     # Insertar nueva fila para cada cripto con datos (comienzan en fila 3)
-    for symbol in TICKETS_SYMBOLS:
+    for symbol in active_symbols:
 
         cantidad_total = 0.0
         precio_total = 0.0
@@ -664,8 +732,20 @@ def get_totales():
         ganancia_perdida = round(cantidad_actual - precio_total) if cantidad_actual != 0 else 0
         precio = round(precio_actual) if precio_actual else 0
 
-        sheet.append([symbol, cantidad_total, precio_total, cantidad_actual, ganancia_perdida, precio, "", "", ""])
+        total_mas_ventas = ganancia_perdida + total_ventas
 
+        sheet.append([
+            symbol,
+            cantidad_total,
+            precio_total,
+            cantidad_actual,
+            ganancia_perdida,
+            precio,
+            total_mas_ventas,
+            "",
+            "",
+            ""
+        ])
     # Ahora que ya están las filas, escribimos las SUMAS en la fila 2
     last_row = sheet.max_row
 
@@ -674,12 +754,12 @@ def get_totales():
     col_cantidad_actual = headers.index("Actual (USD)") + 1          # D = 4
     col_ganancia = headers.index("Ganancia/Perdida") + 1          # E = 5
     col_precio_hoy = headers.index("Precio (USD)") + 1                  # F = 6
-    col_total_compra = headers.index("Total Compra") + 1                # G = 7
-    col_total_actual = headers.index("Total Actual") + 1                # H = 8
-    col_total_ganancia = headers.index("Total Ganancia") + 1            # I = 9
+    col_total_compra = headers.index("Total Compra") + 1
+    col_total_actual = headers.index("Total Actual") + 1
+    col_total_ganancia = headers.index("Total Ganancia") + 1
 
     # Si hay al menos una fila de datos (fila 3 en adelante), ponemos las fórmulas; si no, "0"
-    if last_row >= 4:
+    if last_row >= 3:
         rango_compra   = f"{get_column_letter(col_precio_compra)}2:{get_column_letter(col_precio_compra)}{last_row}"
         rango_actual   = f"{get_column_letter(col_cantidad_actual)}2:{get_column_letter(col_cantidad_actual)}{last_row}"
         rango_ganancia = f"{get_column_letter(col_ganancia)}2:{get_column_letter(col_ganancia)}{last_row}"
@@ -709,17 +789,19 @@ def _read_sheet_values(excel_path: str, sheet_name: str) -> pd.DataFrame:
     return df
 
 def _format_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """2 dec para USD/totales, 8 dec para cantidades; resto texto."""
+    """2 dec para USD/totales, 4 dec para Total (cantidad acciones), 8 dec para cantidades; resto texto."""
     out = df.copy()
     usd_like = { "Compañía",
-        "Total",
         "Compra (USD)",
         "Actual (USD)",
         "Ganancia/Perdida",
         "Precio (USD)",}
     for c in out.columns:
         if pd.api.types.is_numeric_dtype(out[c]):
-            if "Cantidad" in c and "USD" not in c:
+            if c == "Total":
+                # Cantidad de acciones con 4 decimales
+                out[c] = out[c].map(lambda x: "" if pd.isna(x) else f"{float(x):,.4f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            elif "Cantidad" in c and "USD" not in c:
                 out[c] = out[c].map(lambda x: "" if pd.isna(x) else f"{float(x):,.8f}".replace(",", "X").replace(".", ",").replace("X", "."))
             elif c in usd_like or "USD" in c:
                 out[c] = out[c].map(lambda x: "" if pd.isna(x) else f"{float(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
@@ -797,17 +879,36 @@ def send_telegram_table(
     total_precio = int(round(float(precio_num.sum(skipna=True)))) if len(precio_num) else 0
     total_cant   = int(round(float(cant_num.sum(skipna=True))))   if len(cant_num)   else 0
     diferencia   = total_cant - total_precio
+    
+    total_ventas = 0
+
+    if REALIZED_SHEET in book.sheetnames:
+        realized_sheet = book[REALIZED_SHEET]
+
+        for row in realized_sheet.iter_rows(min_row=2, values_only=True):
+            try:
+                total_ventas += float(row[4])
+            except Exception:
+                pass
+
+    resultado_final = diferencia + total_ventas
 
     # 5) Limpieza final para visual
     df = df.replace({None: pd.NA}).fillna("")
     
-    # 🔹 Convertir todas las columnas numéricas a enteros sin decimales
+    # 🔹 Convertir columnas numéricas a enteros, excepto "Total" (cantidad de acciones que puede ser fraccional)
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
-            # Redondea y convierte solo si no hay valores NaN
-            df[col] = df[col].apply(
-                lambda x: int(round(x)) if pd.notna(x) else ""
-            )
+            if col == "Total":
+                # Mantener decimales para cantidades de acciones
+                df[col] = df[col].apply(
+                    lambda x: round(x, 4) if pd.notna(x) else ""
+                )
+            else:
+                # Redondea y convierte solo si no hay valores NaN
+                df[col] = df[col].apply(
+                    lambda x: int(round(x)) if pd.notna(x) else ""
+                )
 
     # 4) Formatear números para la tabla
     df_fmt = _format_numeric_columns(df)
@@ -835,7 +936,10 @@ def send_telegram_table(
                 "",
                 f"Total Precio Compra: {total_precio:,.0f}",
                 f"Total Cantidad Actual: {total_cant:,.0f}",
-                f"✅ Ganancia: {diferencia:,.0f}" if (diferencia > 0) else f"❌ Pérdida: {diferencia:,.0f}",
+                f"Total Ventas: {total_ventas:,.0f}",
+                f"✅ Ganancia: {resultado_final:,.0f}"
+                    if (resultado_final > 0)
+                    else f"❌ Pérdida: {resultado_final:,.0f}",
             ]
             body = body + "\n" + "\n".join(footer_lines) + "\n\n"
             
@@ -874,6 +978,83 @@ def get_telegram():
         chat_id=DEFAULT_CHAT_ID
     )
     
+def process_sell():
+    global book
+
+    if not sell_symbol or sell_total is None:
+        return
+
+    if sell_symbol not in book.sheetnames:
+        print(f"⚠️ No existe hoja para {sell_symbol}")
+        return
+
+    sheet = book[sell_symbol]
+
+    total_invertido = 0.0
+    total_acciones = 0.0
+
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        try:
+            cantidad = float(row[2]) if row[2] not in (None, "", "N/A") else 0
+            compra = float(row[3]) if row[3] not in (None, "", "N/A") else 0
+
+            total_acciones += cantidad
+            total_invertido += compra
+
+        except Exception:
+            continue
+
+    if total_invertido == 0:
+        print(f"⚠️ No hay inversiones para {sell_symbol}")
+        return
+
+    resultado = round(sell_total - total_invertido, 2)
+
+    # Crear hoja ventas
+    if REALIZED_SHEET in book.sheetnames:
+        sales_sheet = book[REALIZED_SHEET]
+    else:
+        sales_sheet = book.create_sheet(REALIZED_SHEET)
+
+        headers = [
+            "Fecha Venta",
+            "Compañía",
+            "Invertido USD",
+            "Venta USD",
+            "Resultado"
+        ]
+
+        sales_sheet.append(headers)
+
+        for col_index, header in enumerate(headers, start=1):
+            cell = sales_sheet.cell(row=1, column=col_index)
+            cell.fill = PatternFill(
+                start_color="AA0000",
+                end_color="AA0000",
+                fill_type="solid"
+            )
+            cell.font = Font(color="FFFFFF", bold=True)
+
+    sales_sheet.append([
+        sell_date.strftime("%Y-%m-%d"),
+        sell_symbol,
+        round(total_invertido, 2),
+        round(sell_total, 2),
+        resultado
+    ])
+
+    print(
+        f"💰 Venta registrada: {sell_symbol} | "
+        f"Invertido: {total_invertido} | "
+        f"Venta: {sell_total} | "
+        f"Resultado: {resultado}"
+    )
+
+    # Eliminar hoja original
+    del book[sell_symbol]
+
+    print(f"🗑️ Hoja eliminada para {sell_symbol}")
+    
 if __name__ == "__main__":
     if not API_KEY_POLYGON or not TICKETS:
         print(
@@ -886,9 +1067,13 @@ if __name__ == "__main__":
         if telegram:
             print_quotes_polygon(TICKETS, API_KEY_POLYGON, args.date, True)
             get_telegram()
-            
-        process_actions()
-        get_totales()
+        
+        if sell_symbol:
+            process_sell()
+            get_totales()
+        else:
+            process_actions()
+            get_totales()
         
         # Guardar archivo
         book.save(EXCEL_FILE)

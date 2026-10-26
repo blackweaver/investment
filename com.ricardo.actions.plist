@@ -8,17 +8,17 @@
   <key>ProgramArguments</key>
   <array>
     <string>/Users/Ricardo_/.venvs/crypto39/bin/python</string>
-    <string>/Users/Ricardo_/Library/CloudStorage/GoogleDrive-abcdise@gmail.com/My Drive/@@manual-del-guerrero/trading/app/actions.py</string>
+    <string>/Users/Ricardo_/Documents/@work-personal/@trading/actions.py</string>
     <string>--top10</string>
     <string>--bajas</string>
     <string>--telegram</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/Ricardo_/Library/CloudStorage/GoogleDrive-abcdise@gmail.com/My Drive/@@manual-del-guerrero/trading/app</string>
+  <string>/Users/Ricardo_/Documents/@work-personal/@trading</string>
 
   <key>StartInterval</key>
-  <integer>259200</integer>
+  <integer>86400</integer>
 
   <key>RunAtLoad</key>
   <true/>
