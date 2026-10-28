@@ -1,6 +1,13 @@
-# Registro de inversiones
+# Seguimiento y automatización de inversiones — Python
 
-Scripts de Python para llevar un registro de acciones y criptomonedas en Excel. Permiten registrar movimientos, consultar precios, calcular resultados y enviar resúmenes a Telegram.
+Sistema de seguimiento y automatización de inversiones en Python para gestionar carteras de acciones y criptomonedas.
+
+- APIs de Polygon, CoinGecko y Binance para consultar cotizaciones de mercado, datos históricos e información de cuentas.
+- Registro de operaciones de inversión, la valoración de carteras y el cálculo de ganancias y pérdidas.
+- Generación de informes en Excel utilizando pandas y openpyxl, incluyendo tendencias históricas y gráficos de evolución.
+- OpenAI para generar análisis de mercado mediante inteligencia artificial y la API de Telegram Bot para enviar resúmenes de las carteras de inversión.
+- Flujos de trabajo configurables mediante línea de comandos (CLI), con soporte para múltiples activos, billeteras digitales y plataformas de inversión.
+- Ejecución programada en macOS para automatizar las actualizaciones periódicas de las carteras.
 
 - `actions.py`: registra compras y ventas de acciones en `actions.xlsx`, con cotizaciones de Polygon.
 - `crypto.py`: registra movimientos en `crypto.xlsx`, consulta precios en CoinGecko e históricos en Binance.
